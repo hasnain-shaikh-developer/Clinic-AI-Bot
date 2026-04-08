@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ clinic.clinic_name }} — Appointment Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+  <style>
+    /* ── Design tokens ───────────────────────────────────────────── */
+    :root {
+      --primary:       {{ clinic.primary_color }};
+      --primary-dark:  color-mix(in srgb, {{ clinic.primary_color }} 80%, #000);
+      --primary-light: color-mix(in srgb, {{ clinic.primary_color }} 12%, #fff);
+      --primary-mid:   color-mix(in srgb, {{ clinic.primary_color }} 25%, #fff);
+
+      --surface:   #f3f6fb;
+      --white:     #ffffff;
+      --border:    #e0e8f4;
+      --text:      #18243a;
+      --text-2:    #4a5872;
+      --muted:     #8898b0;
+      --success:   #059669;
+      --success-bg:#ecfdf5;
+      --warn:      #d97706;
+      --warn-bg:   #fffbeb;
+
+      --r-sm: 8px;
+      --r:    14px;
+      --r-lg: 22px;
+      --r-xl: 28px;
+
+      --shadow-xs: 0 1px 3px rgba(0,0,0,.07);
+      --shadow-sm: 0 2px 8px rgba(0,0,0,.09);
+      --shadow:    0 6px 24px rgba(0,0,0,.11);
+      --shadow-lg: 0 20px 56px rgba(0,0,0,.14);
+
+      --font: 'DM Sans', system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font);
+      background: var(--surface);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Page wrapper ────────────────────────────────────────────── */
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      background:
+        radial-gradient(ellipse 70% 55% at 15% 5%,
+          color-mix(in srgb, {{ clinic.primary_color }} 10%, transparent) 0%,
+          transparent 65%),
+        radial-gradient(ellipse 55% 45% at 85% 95%,
+          color-mix(in srgb, {{ clinic.primary_color }} 7%, transparent) 0%,
+          transparent 65%),
+        var(--surface);
+    }
+
+    /* ── Chat card ───────────────────────────────────────────────── */
+    .chat-card {
+      width: 100%;
+      max-width: 460px;
+      height: min(760px, 93vh);
+      display: flex;
+      flex-direction: column;
+      background: var(--white);
+      border-radius: var(--r-xl);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.7);
+    }
+
+    /* ── Header ──────────────────────────────────────────────────── */
+    .chat-header {
+      flex-shrink: 0;
+      background: var(--primary);
+      /* subtle stripe texture */
+      background-image:
+        linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%),
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 12px,
+          rgba(255,255,255,.025) 12px,
+          rgba(255,255,255,.025) 24px
+        );
+      padding: 18px 20px 16px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .h-icon {
+      width: 44px; height: 44px;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .h-icon i { color: #fff; font-size: 19px; }
+
+    .h-text { flex: 1; min-width: 0; }
+    .h-text h1 {
+      color: #fff;
+      font-size: 16px; font-weight: 700;
+      letter-spacing: -.015em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .h-text p {
+      color: rgba(255,255,255,.65);
+      font-size: 11.5px; margin-top: 2px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .online-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #4ade80;
+      animation: breathe 2.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .4; }
+    }
+
+    /* ── Messages ────────────────────────────────────────────────── */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--surface);
+      scroll-behavior: smooth;
+    }
+    .messages::-webkit-scrollbar { width: 3px; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* date rule */
+    .date-rule {
+      text-align: center;
+      font-size: 10.5px; color: var(--muted);
+      position: relative; margin: 2px 0 6px;
+    }
+    .date-rule::before, .date-rule::after {
+      content: ''; position: absolute;
+      top: 50%; width: 34%; height: 1px; background: var(--border);
+    }
+    .date-rule::before { left: 0; }
+    .date-rule::after  { right: 0; }
+
+    /* rows */
+    .msg {
+      display: flex; flex-direction: column;
+      max-width: 82%;
+      animation: fadeUp .2s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .msg.bot  { align-self: flex-start; }
+    .msg.user { align-self: flex-end;   }
+
+    .bot-row {
+      display: flex; align-items: flex-end; gap: 7px;
+    }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .avatar i { font-size: 12px; color: var(--primary); }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: var(--r);
+      font-size: 13.5px; line-height: 1.65;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.bot  .bubble {
+      background: var(--white);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+      box-shadow: var(--shadow-xs);
+    }
+    .msg.user .bubble {
+      background: var(--primary);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    /* confirmation bubble */
+    .bubble.confirm {
+      background: var(--success);
+      color: #fff;
+      border-radius: var(--r);
+    }
+    /* slot-full warning */
+    .bubble.warn {
+      background: var(--warn-bg);
+      color: var(--warn);
+      border: 1px solid #fde68a;
+    }
+
+    .bubble b  { font-weight: 700; }
+    .meta {
+      font-size: 10px; color: var(--muted);
+      margin-top: 4px; padding: 0 2px;
+    }
+    .msg.user .meta { text-align: right; }
+
+    /* typing */
+    .typing-bubble { padding: 14px 16px !important; }
+    .dots { display: flex; gap: 4px; }
+    .dots span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted);
+      animation: blink 1.4s ease infinite;
+    }
+    .dots span:nth-child(2) { animation-delay: .2s; }
+    .dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: .2; transform: scale(.85); }
+      40%           { opacity: 1;  transform: scale(1); }
+    }
+
+    /* ── Quick action strip ──────────────────────────────────────── */
+    .quick-strip {
+      flex-shrink: 0;
+      padding: 9px 14px 11px;
+      display: flex; gap: 6px; flex-wrap: wrap;
+      background: var(--white);
+      border-top: 1px solid var(--border);
+    }
+    .qa {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 13px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 500; font-family: var(--font);
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      color: var(--text-2);
+      transition: all .16s;
+      white-space: nowrap;
+    }
+    .qa i { font-size: 11px; }
+    .qa:hover { border-color: var(--primary); color: var(--primary); }
+    .qa.book {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+      font-weight: 600;
+    }
+    .qa.book:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+
+    /* ── Input bar ───────────────────────────────────────────────── */
+    .input-bar {
+      flex-shrink: 0;
+      padding: 10px 12px;
+      background: var(--white);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: flex-end; gap: 9px;
+    }
+
+    #msg-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 9px 13px;
+      font-size: 13.5px; font-family: var(--font);
+      color: var(--text);
+      outline: none; resize: none;
+      max-height: 100px; overflow-y: auto;
+      line-height: 1.5;
+      transition: border-color .18s, background .18s;
+    }
+    #msg-input:focus {
+      border-color: var(--primary);
+      background: var(--white);
+    }
+    #msg-input::placeholder { color: var(--muted); }
+
+    .send {
+      width: 42px; height: 42px;
+      border-radius: var(--r-sm);
+      background: var(--primary);
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background .18s, transform .12s;
+      box-shadow: 0 2px 8px color-mix(in srgb, {{ clinic.primary_color }} 40%, transparent);
+    }
+    .send:hover { background: var(--primary-dark); transform: scale(1.05); }
+    .send i { color: #fff; font-size: 15px; }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 500px) {
+      .page { padding: 0; align-items: stretch; }
+      .chat-card {
+        max-width: 100%; border-radius: 0;
+        height: 100vh; height: 100dvh;
+        box-shadow: none;
+      }
+    }
+    @media (min-width: 860px) {
+      .chat-card { max-width: 500px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="chat-card">
+
+    <!-- Single clean header — no admin link visible to patients -->
+    <header class="chat-header">
+      <div class="h-icon">
+        <i class="fa-solid fa-stethoscope"></i>
+      </div>
+      <div class="h-text">
+        <h1>{{ clinic.clinic_name }}</h1>
+        <p><span class="online-dot"></span>Assistant is online</p>
+      </div>
+    </header>
+
+    <!-- Message feed -->
+    <div class="messages" id="messages">
+      <div class="date-rule">Today</div>
+    </div>
+
+    <!-- Quick buttons — each sends only its own keyword -->
+    <div class="quick-strip">
+      <button class="qa book" onclick="quickSend('book', 'Book Appointment')">
+        <i class="fa-regular fa-calendar-plus"></i>Book Appointment
+      </button>
+      <button class="qa" onclick="quickSend('timing', 'Clinic Hours')">
+        <i class="fa-regular fa-clock"></i>Hours
+      </button>
+      <button class="qa" onclick="quickSend('location', 'Location')">
+        <i class="fa-solid fa-location-dot"></i>Location
+      </button>
+      <button class="qa" onclick="quickSend('fees', 'Fees')">
+        <i class="fa-solid fa-dollar-sign"></i>Fees
+      </button>
+    </div>
+
+    <!-- Input -->
+    <div class="input-bar">
+      <textarea id="msg-input" placeholder="Type a message…" rows="1" aria-label="Your message"></textarea>
+      <button class="send" onclick="sendMsg()" aria-label="Send">
+        <i class="fa-solid fa-paper-plane"></i>
+      </button>
+    </div>
+
+  </div><!-- .chat-card -->
+</div><!-- .page -->
+
+<script>
+  let session = {};
+
+  /* ── Utilities ───────────────────────────────────────── */
+  const $messages = document.getElementById('messages');
+  const $input    = document.getElementById('msg-input');
+
+  function hhMM() {
+    return new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function render(raw) {
+    // *bold* and newlines → HTML
+    return raw
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*(.*?)\*/g,'<b>$1</b>')
+      .replace(/\n/g,'<br>');
+  }
+
+  function isConfirm(txt) { return txt.startsWith('Appointment Received'); }
+  function isWarn(txt)    { return txt.startsWith('Sorry, all slots'); }
+
+  /* ── Append message ──────────────────────────────────── */
+  function addMsg(text, who) {
+    const row  = document.createElement('div');
+    row.className = `msg ${who}`;
+    const html = render(text);
+
+    if (who === 'bot') {
+      let bubbleCls = 'bubble';
+      if (isConfirm(text)) bubbleCls += ' confirm';
+      if (isWarn(text))    bubbleCls += ' warn';
+      row.innerHTML = `
+        <div class="bot-row">
+          <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+          <div class="${bubbleCls}">${html}</div>
+        </div>
+        <div class="meta">${hhMM()}</div>`;
+    } else {
+      row.innerHTML = `
+        <div class="bubble">${html}</div>
+        <div class="meta">${hhMM()}</div>`;
+    }
+
+    $messages.appendChild(row);
+    $messages.scrollTop = $messages.scrollHeight;
+  }
+
+  /* ── Typing indicator ────────────────────────────────── */
+  function showTyping() {
+    const row = document.createElement('div');
+    row.className = 'msg bot'; row.id = 'typing';
+    row.innerHTML = `
+      <div class="bot-row">
+        <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+        <div class="bubble typing-bubble"><div class="dots"><span></span><span></span><span></span></div></div>
+      </div>`;
+    $messages.appendChild(row);
+    $messages.scrollTop = $messages.scrollHeight;
+  }
+  function hideTyping() {
+    const el = document.getElementById('typing');
+    if (el) el.remove();
+  }
+
+  /* ── API call ────────────────────────────────────────── */
+  async function callBot(message) {
+    showTyping();
+    try {
+      const res  = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, session }),
+      });
+      const data = await res.json();
+      hideTyping();
+      session = data.session || {};
+      addMsg(data.reply, 'bot');
+    } catch {
+      hideTyping();
+      addMsg('Connection error. Please try again.', 'bot');
+    }
+  }
+
+  /* ── Send handlers ───────────────────────────────────── */
+  function sendMsg() {
+    const text = $input.value.trim();
+    if (!text) return;
+    addMsg(text, 'user');
+    $input.value = '';
+    $input.style.height = 'auto';
+    callBot(text);
+  }
+
+  // Each button has its own keyword — FAQs and booking are fully separate
+  function quickSend(keyword, label) {
+    addMsg(label, 'user');
+    callBot(keyword);
+  }
+
+  /* ── Textarea auto-resize + Enter key ────────────────── */
+  $input.addEventListener('input', () => {
+    $input.style.height = 'auto';
+    $input.style.height = Math.min($input.scrollHeight, 100) + 'px';
+  });
+  $input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+
+  /* ── Init: trigger welcome on load ──────────────────── */
+  (async () => {
+    await new Promise(r => setTimeout(r, 380));
+    callBot('');
+  })();
+</script>
+</body>
+</html>

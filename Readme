@@ -1,0 +1,201 @@
+# Clinic Appointment Chatbot
+### Reusable · Multi-client · International-ready
+
+A professional Flask-based appointment booking chatbot.
+Customise for any clinic by editing **one config block** in `app.py`.
+
+---
+
+## Project Structure
+
+```
+clinic_chatbot/
+├── app.py                   ← All backend logic + config
+├── requirements.txt
+├── appointments.json        ← Auto-created; stores bookings
+└── templates/
+    ├── index.html           ← Patient chat interface
+    └── admin.html           ← Admin dashboard (hidden URL)
+```
+
+---
+
+## Quick Start
+
+```bash
+# 1 — Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate      # Mac/Linux
+venv\Scripts\activate         # Windows
+
+# 2 — Install dependencies
+pip install -r requirements.txt
+
+# 3 — Run
+python app.py
+
+# 4 — Open
+#   Chat UI  →  http://localhost:5000
+#   Admin    →  http://localhost:5000/admin-unique123
+```
+
+---
+
+## Configuration (app.py)
+
+Open `app.py`. Edit the `CLINIC_CONFIG` dictionary at the top.
+**This is the only section you ever need to change.**
+
+```python
+CLINIC_CONFIG = {
+    "clinic_name":            "CarePlus Clinic",
+    "clinic_tagline":         "Trusted care, every visit",
+    "clinic_location":        "London, UK",
+    "clinic_whatsapp_number": "whatsapp:+92XXXXXXXXXX",  # E.164 with whatsapp: prefix
+    "clinic_timings":         "9:00 AM – 6:00 PM",
+    "clinic_days":            "Monday to Saturday",
+    "clinic_fees":            "$20",            # any currency, shown as-is
+    "primary_color":          "#2563eb",        # any CSS colour
+    "daily_slot_limit":       10,               # max bookings per day
+    "admin_path":             "admin-unique123" # change for each client!
+}
+```
+
+| Key | What it does |
+|-----|--------------|
+| `clinic_name` | Shown in header, all messages, WhatsApp |
+| `clinic_fees` | Shown in FAQ answer and booking confirmation |
+| `primary_color` | Entire UI theme — header, buttons, accents |
+| `daily_slot_limit` | Bot blocks booking if day is full |
+| `admin_path` | Secret URL segment — only share with clinic owner |
+
+---
+
+## Hidden Admin Dashboard
+
+The admin page is at a secret URL — **not linked from the chat UI**.
+
+Default URL: `http://localhost:5000/admin-unique123`
+
+**To change the path:** edit `admin_path` in `CLINIC_CONFIG`.
+Share the URL only with the clinic owner. No login is required.
+
+---
+
+## Slot Limit
+
+When `daily_slot_limit` is reached for a date, the bot replies:
+
+> "Sorry, all slots for this day are full. Please choose another date."
+
+The admin dashboard shows a visual slot-usage bar for each active date.
+
+---
+
+## WhatsApp Notifications (Twilio)
+
+When an appointment is confirmed, a WhatsApp message is sent to `clinic_whatsapp_number`.
+
+### Setup
+
+1. Sign up at https://www.twilio.com (free trial works for testing)
+2. Go to **Messaging → Try it out → Send a WhatsApp message**
+3. Activate the Twilio sandbox from your WhatsApp
+4. Copy **Account SID** and **Auth Token** from the Twilio console
+
+### Set environment variables
+
+```bash
+# Mac / Linux
+export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxx"
+export TWILIO_AUTH_TOKEN="your_token_here"
+python app.py
+
+# Windows PowerShell
+$env:TWILIO_ACCOUNT_SID = "ACxxxxxxxxxxxxxxxxxx"
+$env:TWILIO_AUTH_TOKEN  = "your_token_here"
+python app.py
+```
+
+The app runs normally without Twilio — notifications are just skipped.
+
+---
+
+## Multi-Client Deployment
+
+**Give each client a separate project folder.**
+
+```
+clients/
+├── careplus_london/
+│   ├── app.py              ← clinic_name: "CarePlus Clinic"
+│   ├── appointments.json   ← CarePlus data only
+│   └── templates/
+├── medicity_dubai/
+│   ├── app.py              ← clinic_name: "MediCity Clinic"
+│   ├── appointments.json   ← MediCity data only
+│   └── templates/
+```
+
+- Each client runs on a different port (e.g. `port=5001`, `port=5002`)
+- Appointment data is **never shared** between clients
+- Each `admin_path` should be different per client
+
+---
+
+## Resetting Appointment Data
+
+To clear all appointments for a new client or fresh start:
+
+```bash
+# Option A — overwrite with empty array
+echo "[]" > appointments.json
+
+# Option B — delete file (recreated automatically on next booking)
+rm appointments.json
+```
+
+A comment in `app.py` also explains this near the `DB_FILE` line.
+
+---
+
+## Chatbot Flow
+
+```
+Page loads → Welcome message (stays idle)
+│
+├── "Book Appointment" button or type 'book'
+│     name → phone → date (slot check) → time → problem → confirmed
+│
+├── "Hours" button or type 'timing'    → clinic hours
+├── "Location" button or type 'location' → address
+└── "Fees" button or type 'fees'       → consultation fee
+```
+
+FAQ buttons **never** start the booking flow.
+Booking flow **only** starts on explicit book intent.
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `ModuleNotFoundError: flask` | `pip install -r requirements.txt` |
+| Port 5000 in use | Change `port=5000` → `port=5001` in `app.py` |
+| Admin page not found | Check `admin_path` in config matches your URL |
+| WhatsApp not sending | Verify env vars are set; Twilio sandbox activated |
+| `color-mix` not rendering | Use a modern browser (Chrome 111+, Firefox 113+, Safari 16.2+) |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Backend | Python 3.8+ · Flask |
+| Storage | JSON file (no database needed) |
+| Frontend | HTML5 · CSS3 · Vanilla JS |
+| Icons | Font Awesome 6 (CDN) |
+| Fonts | DM Sans (Google Fonts) |
+| Notifications | Twilio WhatsApp API (optional) |
