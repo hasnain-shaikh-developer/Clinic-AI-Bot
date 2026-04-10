@@ -16,9 +16,24 @@
 """
 
 from flask import Flask, request, jsonify, render_template, make_response
-import json, os
+import os
 from datetime import datetime, date, timedelta
 import urllib.request, urllib.error
+
+import sqlite3
+
+conn = sqlite3.connect("appointments.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    date TEXT,
+    time TEXT
+)
+""")
+conn.commit()
 
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
@@ -100,7 +115,7 @@ app     = Flask(__name__)
 
 # ── Appointments file ─────────────────────────────────────────────
 # To reset: replace file contents with []  or just delete the file.
-DB_FILE = "appointments.json"
+# DB_FILE = "appointments.json"
 
 
 def cfg(key):
@@ -112,37 +127,22 @@ def cfg(key):
 # ══════════════════════════════════════════════════════════════════
 
 def load_appointments():
-    """
-    Always read fresh from disk.
-    Returns an empty list if the file does not exist or is empty/corrupt.
-    No in-memory caching — every call gets the latest data.
-    """
-    if not os.path.exists(DB_FILE):
-        return []
+    cursor.execute("SELECT * FROM appointments ORDER BY id DESC")
+    return cursor.fetchall()
+
+def save_appointment(name, date, time):
+    cursor.execute(
+        "INSERT INTO appointments (name, date, time) VALUES (?, ?, ?)",
+        (name, date, time)
+    )
+    conn.commit()
+
+    print("✅ Appointment Saved")
+
     try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-        if not content:
-            return []
-        data = json.loads(content)
-        # Guard against corrupt file containing a non-list
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def save_appointments(records):
-    """
-    Atomically write the appointments list to disk.
-
-    Uses a temp file + rename (atomic on POSIX) so a crash mid-write
-    never leaves the file in a corrupt/partial state, which would cause
-    ghost or duplicate appointments to appear on the dashboard.
-    """
-    tmp = DB_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(records, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, DB_FILE)   # atomic on Linux/Mac; near-atomic on Windows
+        send_whatsapp_notification()
+    except:
+        print("Notification failed")
 
 
 # ══════════════════════════════════════════════════════════════════
