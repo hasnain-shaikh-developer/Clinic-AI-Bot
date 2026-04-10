@@ -16,31 +16,10 @@
 """
 
 from flask import Flask, request, jsonify, render_template, make_response
-import os
+import json, os, sqlite3
 from datetime import datetime, date, timedelta
-import urllib.request, urllib.error
+import requests   # pip install requests  (already installed with flask in most envs)
 
-import sqlite3
-
-def get_db():
-    return sqlite3.connect("appointments.db")
-
-
-def init_db():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS appointments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        date TEXT,
-        time TEXT
-    )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
 # ══════════════════════════════════════════════════════════════════
@@ -117,49 +96,123 @@ def get_base_url():
     return BASE_URL or CLINIC_CONFIG.get("site_url", "http://localhost:5000").rstrip("/")
 
 # ══════════════════════════════════════════════════════════════════
-app     = Flask(__name__)
+app = Flask(__name__)
 
-# ── Appointments file ─────────────────────────────────────────────
-# To reset: replace file contents with []  or just delete the file.
-# DB_FILE = "appointments.json"
+# ── SQLite database ───────────────────────────────────────────────
+# Each clinic deployment keeps its own appointments.db file.
+# To reset data: delete appointments.db — it is recreated on startup.
+DB_PATH = "appointments.db"
 
 
 def cfg(key):
     return CLINIC_CONFIG[key]
 
 
+def get_db():
+    """
+    Open and return a fresh SQLite connection.
+    Always called per-request — no shared global connection.
+    Caller is responsible for calling conn.close().
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row   # rows behave like dicts
+    return conn
+
+
+def init_db():
+    """
+    Create the appointments table if it does not already exist.
+    Called once at startup — safe to run repeatedly (IF NOT EXISTS).
+    """
+    conn = get_db()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS appointments (
+                id        TEXT PRIMARY KEY,
+                clinic_id TEXT NOT NULL DEFAULT '',
+                name      TEXT NOT NULL,
+                phone     TEXT NOT NULL,
+                date      TEXT NOT NULL,
+                time      TEXT NOT NULL,
+                problem   TEXT NOT NULL,
+                booked_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Create table at startup
+init_db()
+
+
 # ══════════════════════════════════════════════════════════════════
 #  DATABASE HELPERS
 # ══════════════════════════════════════════════════════════════════
 
-def load_appointments():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM appointments ORDER BY id DESC")
-    data = cursor.fetchall()
-
-    conn.close()
-    return data
-
-def save_appointment(name, date, time):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "INSERT INTO appointments (name, date, time) VALUES (?, ?, ?)",
-        (name, date, time)
-    )
-
-    conn.commit()
-    conn.close()
-
-    print("✅ Appointment Saved")
-
+def load_appointments(clinic_id=None):
+    """
+    Load all appointments from SQLite, always fresh — no caching.
+    If clinic_id is given, return only records for that clinic.
+    Returns a list of plain dicts (never raises — returns [] on any error).
+    """
     try:
-        send_whatsapp_notification()
-    except:
-        print("Notification failed")
+        conn = get_db()
+        try:
+            if clinic_id:
+                rows = conn.execute(
+                    "SELECT * FROM appointments WHERE clinic_id = ? ORDER BY booked_at DESC",
+                    (clinic_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM appointments ORDER BY booked_at DESC"
+                ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"[DB] load_appointments error: {exc}")
+        return []
+
+
+def save_appointment(appt):
+    """
+    Insert a single appointment dict into SQLite.
+    Opens connection → inserts → commits → closes.
+    Returns True on success, False on any error (never raises).
+    """
+    try:
+        conn = get_db()
+        try:
+            conn.execute(
+                """INSERT INTO appointments
+                   (id, clinic_id, name, phone, date, time, problem, booked_at)
+                   VALUES (:id, :clinic_id, :name, :phone, :date, :time, :problem, :booked_at)""",
+                {
+                    "id":        appt["id"],
+                    "clinic_id": appt.get("clinic_id", ""),
+                    "name":      appt["name"],
+                    "phone":     appt["phone"],
+                    "date":      appt["date"],
+                    "time":      appt["time"],
+                    "problem":   appt["problem"],
+                    "booked_at": appt["booked_at"],
+                }
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    except sqlite3.IntegrityError:
+        # Duplicate id — already saved (idempotent, not an error)
+        print(f"[DB] Appointment {appt.get('id')} already exists — skipping duplicate.")
+        return True
+    except Exception as exc:
+        print(f"[DB] save_appointment error: {exc}")
+        return False
+
 
 # ══════════════════════════════════════════════════════════════════
 #  TIME SLOT ENGINE
@@ -463,22 +516,19 @@ def filter_appointments(records, period):
 # ══════════════════════════════════════════════════════════════════
 #  WHATSAPP NOTIFICATION  —  Meta WhatsApp Business API
 #
-#  Called once after an appointment is saved.
-#  Sends only:  "New Appointment\nCheck Dashboard: <link>"
-#  No patient details are included.
+#  Called once after a successful appointment save.
+#  Message: "New Appointment\nCheck Dashboard: <link>"
+#  No patient details included.
 #
-#  Uses urllib (stdlib) — no extra pip install required.
+#  Uses requests.post() for clarity and reliability.
 #  Requires META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER env vars.
 # ══════════════════════════════════════════════════════════════════
 
 def send_whatsapp_notification(appt):
     """
-    Send a minimal WhatsApp notification to the clinic doctor via
-    the Meta WhatsApp Business API.
-
-    Message format (as requested):
-        New Appointment
-        Check Dashboard: https://your-domain.com/admin-abc
+    Notify the clinic doctor via Meta WhatsApp Business API.
+    Sends only appointment alert + dashboard link — no patient details.
+    Returns True on success, False on any error (never raises).
     """
     if not (META_TOKEN and META_PHONE_ID and DOCTOR_WHATSAPP_NUMBER):
         print("[WhatsApp] Meta credentials not set — notification skipped.")
@@ -488,50 +538,48 @@ def send_whatsapp_notification(appt):
     try:
         base = get_base_url()
 
-        # Resolve dashboard link from CLINICS or fall back to CLINIC_CONFIG
+        # Resolve the correct dashboard URL for this clinic
         clinic_id = appt.get("clinic_id", "")
         clinic    = CLINICS.get(clinic_id) if clinic_id else None
-        if clinic:
-            dashboard_url = f"{base}{clinic['dashboard']}"
-        else:
-            dashboard_url = f"{base}/{cfg('admin_path')}"
-
-        message_body = (
-            "New Appointment\n"
-            f"Check Dashboard: {dashboard_url}"
+        dashboard_url = (
+            f"{base}{clinic['dashboard']}" if clinic
+            else f"{base}/{cfg('admin_path')}"
         )
 
-        # Build the Meta Cloud API request
+        message_body = f"New Appointment\nCheck Dashboard: {dashboard_url}"
+
         api_url = f"https://graph.facebook.com/v19.0/{META_PHONE_ID}/messages"
 
-        payload = json.dumps({
-            "messaging_product": "whatsapp",
-            "to":                DOCTOR_WHATSAPP_NUMBER,
-            "type":              "text",
-            "text":              {"body": message_body},
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
+        resp = requests.post(
             api_url,
-            data    = payload,
-            method  = "POST",
-            headers = {
+            headers={
                 "Authorization": f"Bearer {META_TOKEN}",
                 "Content-Type":  "application/json",
             },
+            json={
+                "messaging_product": "whatsapp",
+                "to":                DOCTOR_WHATSAPP_NUMBER,
+                "type":              "text",
+                "text":              {"body": message_body},
+            },
+            timeout=10,
         )
 
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            status = resp.status
-            print(f"[WhatsApp] Notification sent. Status: {status}")
-            print(f"[WhatsApp] Dashboard: {dashboard_url}")
+        if resp.status_code == 200:
+            print(f"[WhatsApp] Doctor notified. Dashboard: {dashboard_url}")
             return True
+        else:
+            print(f"[WhatsApp] API error {resp.status_code}: {resp.text[:200]}")
+            return False
 
-    except urllib.error.HTTPError as exc:
-        print(f"[WhatsApp] HTTP error {exc.code}: {exc.read().decode()}")
+    except requests.exceptions.Timeout:
+        print("[WhatsApp] Request timed out — notification skipped.")
+        return False
+    except requests.exceptions.ConnectionError:
+        print("[WhatsApp] Connection error — notification skipped.")
         return False
     except Exception as exc:
-        print(f"[WhatsApp] Error: {exc}")
+        print(f"[WhatsApp] Unexpected error: {exc}")
         return False
 
 
@@ -562,15 +610,27 @@ FAQ_KEYWORDS = {
 
 
 def faq_answer(topic):
-    return {
+    answers = {
         "timing":   (f"{cfg('clinic_name')} is open {cfg('clinic_days')}, "
                      f"{cfg('clinic_timings')}."),
         "location": f"We are located at {cfg('clinic_location')}.",
         "fees":     (f"The consultation fee is {cfg('clinic_fees')} per visit. "
                      f"We accept cash and all major cards."),
-        "contact":  (f"You can reach us via WhatsApp at "
-                     f"{cfg('clinic_whatsapp_number').replace('whatsapp:', '')}."),
-    }[topic]
+        "contact":  f"Please visit our clinic at {cfg('clinic_location')} during opening hours.",
+    }
+    return answers.get(topic, "")
+
+
+# ── Symptom keywords → gentle triage reply ────────────────────────
+SYMPTOM_KEYWORDS = (
+    "cough", "flu", "fever", "cold", "headache", "pain", "nausea",
+    "vomit", "diarrhea", "diarrhoea", "stomach", "throat", "runny",
+    "sneeze", "chills", "fatigue", "tired", "sick", "ache", "aches",
+)
+
+def detect_symptom(text):
+    lower = text.lower()
+    return any(kw in lower for kw in SYMPTOM_KEYWORDS)
 
 
 def match_faq(text):
@@ -609,158 +669,227 @@ def idle_help_text():
 
 # ══════════════════════════════════════════════════════════════════
 #  MAIN CHAT ENDPOINT
+#  Fully wrapped in try/except — NEVER returns a 500 or crashes.
+#  Always returns JSON: {"reply": "...", "session": {...}}
 # ══════════════════════════════════════════════════════════════════
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    body    = request.json or {}
-    message = body.get("message", "").strip()
-    session = body.get("session", {})
+    # Outer safety net — any uncaught exception returns a friendly message
+    try:
+        body    = request.get_json(silent=True) or {}
+        message = (body.get("message") or "").strip()
+        session = body.get("session") or {}
 
-    step = session.get("step", "idle")
-    data = session.get("data", {})
+        step = session.get("step", "idle")
+        data = session.get("data") or {}
 
-    PROMPTS = build_prompts()
+        PROMPTS = build_prompts()
 
-    # ── Welcome ───────────────────────────────────────────────────
-    if step == "idle" and message == "":
-        # Capture clinic_id from URL query param (?clinic=abc) and keep in session.
-        # This is passed back by the frontend in subsequent requests so we know
-        # which clinic this appointment belongs to.
-        clinic_id = request.json.get("clinic_id", "") or request.args.get("clinic", "")
-        session.update({"step": "idle", "data": {}, "clinic_id": clinic_id})
-        return jsonify(reply=welcome_text(), session=session)
+        # ── Welcome (first load) ─────────────────────────────────────
+        if step == "idle" and message == "":
+            try:
+                clinic_id = body.get("clinic_id", "") or request.args.get("clinic", "")
+                session.update({"step": "idle", "data": {}, "clinic_id": clinic_id})
+                return jsonify(reply=welcome_text(), session=session)
+            except Exception as exc:
+                print(f"[chat/welcome] {exc}")
+                return jsonify(reply=welcome_text(), session=session)
 
-    # ── Booking flow ──────────────────────────────────────────────
-    if step in STEPS:
+        # ── FAQ button shortcuts (sent as exact keywords by the frontend) ─
+        # These are checked before the booking flow so buttons always work
+        # regardless of the current session state.
+        msg_lower = message.lower().strip()
 
-        # Phone validation
-        if step == "phone" and not any(c.isdigit() for c in message):
-            return jsonify(
-                reply="Please enter a valid phone number (must contain digits).",
-                session=session
-            )
+        # Button: "hours" or "timing" → clinic timing
+        if msg_lower in ("hours", "timing", "clinic hours"):
+            reply = faq_answer("timing")
+            return jsonify(reply=reply, session=session)
 
-        # ── Date step ──────────────────────────────────────────────
-        if step == "date":
-            # Allow patient to confirm an auto-suggested date
-            pending = session.get("pending_date")
-            if message.lower().strip() in ("yes", "ok", "sure", "confirm", "okay") and pending:
-                message = pending
-            else:
-                # Parse and validate the date (rejects past + clinic-closed-today)
-                parsed_date, date_error = validate_date(message)
-                if date_error:
-                    return jsonify(reply=date_error, session=session)
+        # Button: "fees" → consultation fee
+        if msg_lower in ("fees", "fee", "consultation fees"):
+            reply = faq_answer("fees")
+            return jsonify(reply=reply, session=session)
 
-                records   = load_appointments()
-                formatted = format_date(parsed_date)
+        # Button: "location" → clinic address
+        if msg_lower in ("location", "address"):
+            reply = faq_answer("location")
+            return jsonify(reply=reply, session=session)
 
-                # Date is full — find and suggest next open date
-                if count_booked(formatted, records) >= cfg("daily_slot_limit"):
-                    # Start search from the day after the rejected date,
-                    # but never before the earliest bookable date
-                    search_from = max(
-                        parsed_date + timedelta(days=1),
-                        earliest_bookable_date()
-                    )
-                    next_d     = find_next_open_date(search_from, records)
-                    next_d_str = format_date(next_d)
-                    new_session = {**session, "pending_date": next_d_str}
-                    return jsonify(
-                        reply=(
-                            f"The selected date ({formatted}) is fully booked.\n"
-                            f"The next available date is *{next_d_str}*.\n\n"
-                            f"Type 'yes' to confirm {next_d_str}, "
-                            "or enter a different date."
-                        ),
-                        session=new_session
-                    )
-
-                message = formatted  # normalise to "04 May 2026"
-
-        # Save the answer for this step
-        data[step] = message
-        session["data"]         = data
-        session["pending_date"] = None   # clear any pending suggestion
-
-        idx = STEPS.index(step)
-        if idx + 1 < len(STEPS):
-            next_step = STEPS[idx + 1]
-            session["step"] = next_step
-
-            # After date confirmed: show slots remaining
-            if step == "date":
-                records   = load_appointments()
-                remaining = cfg("daily_slot_limit") - count_booked(message, records)
-                note = (f"{remaining} slot{'s' if remaining != 1 else ''} "
-                        f"available on this day.\n\n")
-                return jsonify(reply=note + PROMPTS[next_step], session=session)
-
-            return jsonify(reply=PROMPTS[next_step], session=session)
-
-        # ── All steps done — auto-assign time, save, confirm ───────
-        records       = load_appointments()
-        assigned_time = next_free_slot(data["date"], records)
-
-        if assigned_time is None:
-            # Edge case: date filled between steps
-            next_d = find_next_open_date(
-                parse_user_date(data["date"]) + timedelta(days=1), records
-            )
-            session.update({"step": "idle", "data": {}})
+        # ── Symptom detection (checked in idle state only) ────────────
+        # If the user types a symptom keyword while not in a booking flow,
+        # suggest they see the doctor and offer to book.
+        if step == "idle" and detect_symptom(message):
             return jsonify(
                 reply=(
-                    f"That date just filled up. "
-                    f"Please book again and select {format_date(next_d)} instead."
+                    "It seems like a common issue. "
+                    "I recommend consulting the doctor. "
+                    "Would you like to book an appointment?"
                 ),
                 session=session
             )
 
-        appt = {
-            **data,
-            "time":      assigned_time,
-            "clinic_id": session.get("clinic_id", ""),   # set by chat endpoint from ?clinic= param
-            "id":        datetime.now().strftime("%Y%m%d%H%M%S"),
-            "booked_at": datetime.now().isoformat(),
-        }
-        records.append(appt)
-        save_appointments(records)
-        send_whatsapp_notification(appt)
+        # ── Booking flow ──────────────────────────────────────────────
+        if step in STEPS:
+            try:
+                # Phone validation
+                if step == "phone" and not any(c.isdigit() for c in message):
+                    return jsonify(
+                        reply="Please enter a valid phone number (must contain digits).",
+                        session=session
+                    )
 
-        confirmation = (
-            "Appointment Received\n\n"
-            f"Name    : {appt['name']}\n"
-            f"Phone   : {appt['phone']}\n"
-            f"Date    : {appt['date']}\n"
-            f"Time    : {appt['time']}\n"
-            f"Problem : {appt['problem']}\n\n"
-            f"Your appointment request has been received for "
-            f"*{appt['date']}* at *{appt['time']}*.\n"
-            "Our team will contact you shortly.\n\n"
-            f"Consultation fee: {cfg('clinic_fees')}\n"
-            "Please arrive 10 minutes before your appointment."
-        )
+                # ── Date step ─────────────────────────────────────────
+                if step == "date":
+                    pending = session.get("pending_date")
+                    if msg_lower in ("yes", "ok", "sure", "confirm", "okay") and pending:
+                        message = pending
+                    else:
+                        parsed_date, date_error = validate_date(message)
+                        if date_error:
+                            return jsonify(reply=date_error, session=session)
 
-        session.update({"step": "idle", "data": {}})
-        return jsonify(reply=confirmation, session=session)
+                        records   = load_appointments()
+                        formatted = format_date(parsed_date)
 
-    # ── Idle: FAQ → book intent → fallback ───────────────────────
-    faq = match_faq(message)
-    if faq:
+                        if count_booked(formatted, records) >= cfg("daily_slot_limit"):
+                            search_from = max(
+                                parsed_date + timedelta(days=1),
+                                earliest_bookable_date()
+                            )
+                            next_d     = find_next_open_date(search_from, records)
+                            next_d_str = format_date(next_d)
+                            new_session = {**session, "pending_date": next_d_str}
+                            return jsonify(
+                                reply=(
+                                    f"The selected date ({formatted}) is fully booked.\n"
+                                    f"The next available date is *{next_d_str}*.\n\n"
+                                    f"Type 'yes' to confirm {next_d_str}, "
+                                    "or enter a different date."
+                                ),
+                                session=new_session
+                            )
+
+                        message = formatted   # normalise to "04 May 2026"
+
+                # Save this step's answer
+                data[step]              = message
+                session["data"]         = data
+                session["pending_date"] = None
+
+                idx = STEPS.index(step)
+                if idx + 1 < len(STEPS):
+                    next_step = STEPS[idx + 1]
+                    session["step"] = next_step
+
+                    if step == "date":
+                        records   = load_appointments()
+                        remaining = cfg("daily_slot_limit") - count_booked(message, records)
+                        note = (f"{remaining} slot{'s' if remaining != 1 else ''} "
+                                f"available on this day.\n\n")
+                        return jsonify(reply=note + PROMPTS[next_step], session=session)
+
+                    return jsonify(reply=PROMPTS[next_step], session=session)
+
+                # ── All steps complete — assign slot, save, notify ────
+                records       = load_appointments()
+                assigned_time = next_free_slot(data["date"], records)
+
+                if assigned_time is None:
+                    next_d = find_next_open_date(
+                        parse_user_date(data["date"]) + timedelta(days=1), records
+                    )
+                    session.update({"step": "idle", "data": {}})
+                    return jsonify(
+                        reply=(
+                            f"That date just filled up. "
+                            f"Please book again and select {format_date(next_d)} instead."
+                        ),
+                        session=session
+                    )
+
+                appt = {
+                    **data,
+                    "time":      assigned_time,
+                    "clinic_id": session.get("clinic_id", ""),
+                    "id":        datetime.now().strftime("%Y%m%d%H%M%S"),
+                    "booked_at": datetime.now().isoformat(),
+                }
+
+                # Save to SQLite — single insert, no duplicates possible
+                saved = save_appointment(appt)
+
+                # Send WhatsApp notification only after successful save
+                if saved:
+                    try:
+                        send_whatsapp_notification(appt)
+                    except Exception as wa_exc:
+                        print(f"[chat] WhatsApp notification error: {wa_exc}")
+
+                confirmation = (
+                    "Appointment Received\n\n"
+                    f"Name    : {appt['name']}\n"
+                    f"Phone   : {appt['phone']}\n"
+                    f"Date    : {appt['date']}\n"
+                    f"Time    : {appt['time']}\n"
+                    f"Problem : {appt['problem']}\n\n"
+                    f"Your appointment request has been received for "
+                    f"*{appt['date']}* at *{appt['time']}*.\n"
+                    "Our team will contact you shortly.\n\n"
+                    f"Consultation fee: {cfg('clinic_fees')}\n"
+                    "Please arrive 10 minutes before your appointment."
+                )
+
+                session.update({"step": "idle", "data": {}})
+                return jsonify(reply=confirmation, session=session)
+
+            except Exception as exc:
+                print(f"[chat/booking-flow] Unhandled error: {exc}")
+                session.update({"step": "idle", "data": {}})
+                return jsonify(
+                    reply="Something went wrong. Please try again or type 'book' to start over.",
+                    session=session
+                )
+
+        # ── Idle: FAQ text match → book intent → default fallback ────
+        try:
+            faq = match_faq(message)
+            if faq:
+                return jsonify(
+                    reply=faq + "\n\nType 'book' to schedule an appointment.",
+                    session=session
+                )
+
+            if is_book_intent(message):
+                session.update({"step": "name", "data": {}})
+                return jsonify(
+                    reply=f"Let us get your appointment scheduled.\n\n{PROMPTS['name']}",
+                    session=session
+                )
+
+            # Default fallback — always returns something useful
+            return jsonify(
+                reply=(
+                    "How can I help you? "
+                    "You can book an appointment or ask about our services.\n\n"
+                    + idle_help_text()
+                ),
+                session=session
+            )
+        except Exception as exc:
+            print(f"[chat/idle] Error: {exc}")
+            return jsonify(
+                reply="How can I help you? You can book an appointment or ask about services.",
+                session=session
+            )
+
+    except Exception as critical_exc:
+        # Absolute last-resort catch — ensures /chat NEVER returns a 5xx
+        print(f"[chat] CRITICAL unhandled exception: {critical_exc}")
         return jsonify(
-            reply=faq + "\n\nType 'book' to schedule an appointment.",
-            session=session
+            reply="How can I help you? You can book an appointment or ask about services.",
+            session={}
         )
-
-    if is_book_intent(message):
-        session.update({"step": "name", "data": {}})
-        return jsonify(
-            reply=f"Let us get your appointment scheduled.\n\n{PROMPTS['name']}",
-            session=session
-        )
-
-    return jsonify(reply=idle_help_text(), session=session)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -774,34 +903,48 @@ def index():
 
 @app.route(f"/{CLINIC_CONFIG['admin_path']}")
 def admin():
-    # Read filter from ?filter=today etc.
-    period = request.args.get("filter", "all")
+    try:
+        period = request.args.get("filter", "all")
 
-    all_records      = load_appointments()
-    filtered_records = filter_appointments(all_records, period)
+        all_records      = load_appointments()          # always fresh from SQLite
+        filtered_records = filter_appointments(all_records, period)
 
-    # Slot summary always uses ALL records (so bars stay accurate)
-    slot_summary = {}
-    for appt in all_records:
-        d = appt.get("date", "Unknown")
-        slot_summary[d] = slot_summary.get(d, 0) + 1
+        slot_summary = {}
+        for appt in all_records:
+            d = appt.get("date", "Unknown")
+            slot_summary[d] = slot_summary.get(d, 0) + 1
 
-    today_count = len(filter_appointments(all_records, "today"))
+        today_count = len(filter_appointments(all_records, "today"))
 
-    return render_template(
-        "admin.html",
-        appointments  = filtered_records,
-        all_count     = len(all_records),
-        today_count   = today_count,
-        clinic        = CLINIC_CONFIG,
-        slot_summary  = slot_summary,
-        active_filter = period,
-    )
+        return render_template(
+            "admin.html",
+            appointments  = filtered_records,
+            all_count     = len(all_records),
+            today_count   = today_count,
+            clinic        = CLINIC_CONFIG,
+            slot_summary  = slot_summary,
+            active_filter = period,
+        )
+    except Exception as exc:
+        print(f"[admin] Error: {exc}")
+        return render_template(
+            "admin.html",
+            appointments  = [],
+            all_count     = 0,
+            today_count   = 0,
+            clinic        = CLINIC_CONFIG,
+            slot_summary  = {},
+            active_filter = "all",
+        )
 
 
 @app.route("/api/appointments")
 def api_appointments():
-    return jsonify(load_appointments())
+    try:
+        return jsonify(load_appointments())
+    except Exception as exc:
+        print(f"[api/appointments] Error: {exc}")
+        return jsonify([])
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -881,28 +1024,25 @@ def whatsapp_webhook():
         f"💬 You can also ask your questions here"
     )
 
-    # Send the reply via Meta Cloud API
+    # Send the reply via Meta Cloud API using requests.post()
     if META_TOKEN and META_PHONE_ID:
         try:
             api_url = f"https://graph.facebook.com/v19.0/{META_PHONE_ID}/messages"
-            payload = json.dumps({
-                "messaging_product": "whatsapp",
-                "to":                sender,
-                "type":              "text",
-                "text":              {"body": reply_text},
-            }).encode("utf-8")
-
-            req = urllib.request.Request(
+            resp = requests.post(
                 api_url,
-                data    = payload,
-                method  = "POST",
-                headers = {
+                headers={
                     "Authorization": f"Bearer {META_TOKEN}",
                     "Content-Type":  "application/json",
                 },
+                json={
+                    "messaging_product": "whatsapp",
+                    "to":                sender,
+                    "type":              "text",
+                    "text":              {"body": reply_text},
+                },
+                timeout=10,
             )
-            urllib.request.urlopen(req, timeout=10)
-            print(f"[WhatsApp] Welcome reply sent to {sender}")
+            print(f"[WhatsApp] Welcome reply sent to {sender}. Status: {resp.status_code}")
         except Exception as exc:
             print(f"[WhatsApp] Reply error: {exc}")
     else:
@@ -928,41 +1068,47 @@ def _make_clinic_admin(cid):
     We use a factory so the closure captures cid correctly in a loop.
     """
     def clinic_admin_view():
-        period      = request.args.get("filter", "all")
-        clinic_info = CLINICS[cid]
+        try:
+            period      = request.args.get("filter", "all")
+            clinic_info = CLINICS[cid]
 
-        # Load only this clinic's appointments
-        all_records = [
-            a for a in load_appointments()
-            if a.get("clinic_id") == cid
-        ]
-        filtered_records = filter_appointments(all_records, period)
+            # Load only this clinic's records — SQLite filters by clinic_id
+            all_records      = load_appointments(clinic_id=cid)
+            filtered_records = filter_appointments(all_records, period)
 
-        slot_summary = {}
-        for appt in all_records:
-            d = appt.get("date", "Unknown")
-            slot_summary[d] = slot_summary.get(d, 0) + 1
+            slot_summary = {}
+            for appt in all_records:
+                d = appt.get("date", "Unknown")
+                slot_summary[d] = slot_summary.get(d, 0) + 1
 
-        today_count = len(filter_appointments(all_records, "today"))
+            today_count = len(filter_appointments(all_records, "today"))
 
-        # Build a minimal CLINIC_CONFIG-compatible dict for the template
-        clinic_ctx = {
-            **CLINIC_CONFIG,                          # keep colours/timings/fees
-            "clinic_name":  clinic_info["name"],
-            "admin_path":   clinic_info["dashboard"].lstrip("/"),
-        }
+            clinic_ctx = {
+                **CLINIC_CONFIG,
+                "clinic_name":  clinic_info["name"],
+                "admin_path":   clinic_info["dashboard"].lstrip("/"),
+            }
 
-        return render_template(
-            "admin.html",
-            appointments  = filtered_records,
-            all_count     = len(all_records),
-            today_count   = today_count,
-            clinic        = clinic_ctx,
-            slot_summary  = slot_summary,
-            active_filter = period,
-        )
+            return render_template(
+                "admin.html",
+                appointments  = filtered_records,
+                all_count     = len(all_records),
+                today_count   = today_count,
+                clinic        = clinic_ctx,
+                slot_summary  = slot_summary,
+                active_filter = period,
+            )
+        except Exception as exc:
+            print(f"[clinic_admin/{cid}] Error: {exc}")
+            clinic_info = CLINICS.get(cid, {})
+            clinic_ctx  = {**CLINIC_CONFIG, "clinic_name": clinic_info.get("name", cid),
+                           "admin_path": clinic_info.get("dashboard", "").lstrip("/")}
+            return render_template(
+                "admin.html",
+                appointments=[], all_count=0, today_count=0,
+                clinic=clinic_ctx, slot_summary={}, active_filter="all",
+            )
 
-    # Flask requires unique endpoint names
     clinic_admin_view.__name__ = f"clinic_admin_{cid}"
     return clinic_admin_view
 
@@ -975,4 +1121,4 @@ for _cid, _clinic_data in CLINICS.items():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(port=5000)
