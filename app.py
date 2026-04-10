@@ -22,19 +22,25 @@ import urllib.request, urllib.error
 
 import sqlite3
 
-conn = sqlite3.connect("appointments.db", check_same_thread=False)
-cursor = conn.cursor()
+def get_db():
+    return sqlite3.connect("appointments.db")
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS appointments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    date TEXT,
-    time TEXT
-)
-""")
-conn.commit()
 
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        date TEXT,
+        time TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
 # ══════════════════════════════════════════════════════════════════
@@ -127,15 +133,26 @@ def cfg(key):
 # ══════════════════════════════════════════════════════════════════
 
 def load_appointments():
+    conn = get_db()
+    cursor = conn.cursor()
+
     cursor.execute("SELECT * FROM appointments ORDER BY id DESC")
-    return cursor.fetchall()
+    data = cursor.fetchall()
+
+    conn.close()
+    return data
 
 def save_appointment(name, date, time):
+    conn = get_db()
+    cursor = conn.cursor()
+
     cursor.execute(
         "INSERT INTO appointments (name, date, time) VALUES (?, ?, ?)",
         (name, date, time)
     )
+
     conn.commit()
+    conn.close()
 
     print("✅ Appointment Saved")
 
@@ -143,7 +160,6 @@ def save_appointment(name, date, time):
         send_whatsapp_notification()
     except:
         print("Notification failed")
-
 
 # ══════════════════════════════════════════════════════════════════
 #  TIME SLOT ENGINE
