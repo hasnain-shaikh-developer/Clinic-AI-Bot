@@ -20,8 +20,6 @@ import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests  (already installed with flask in most envs)
 
-
-
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
 # ══════════════════════════════════════════════════════════════════
@@ -69,7 +67,7 @@ CLINIC_CONFIG = {
 META_TOKEN             = os.environ.get("META_TOKEN", "")
 META_PHONE_ID          = os.environ.get("META_PHONE_ID", "")
 DOCTOR_WHATSAPP_NUMBER = os.environ.get("DOCTOR_WHATSAPP_NUMBER", "")
-META_VERIFY_TOKEN      = os.environ.get("META_VERIFY_TOKEN", "clinicbot")
+META_VERIFY_TOKEN      = "abc123"   # hardcoded — must match your Meta webhook config
 BASE_URL               = os.environ.get("BASE_URL", "").rstrip("/")
 
 # ══════════════════════════════════════════════════════════════════
@@ -272,11 +270,7 @@ ALL_SLOTS = generate_time_slots()
 
 def get_booked_times(date_str, records=None):
     """Return set of time strings already taken for date_str."""
-    if records is None:Apps will only be able to receive test webhooks sent from the app dashboard while the app is unpublished. No production data, including from app admins, developers or testers, will be delivered unless the app has been published.
-​
-The callback URL or verify token couldn't be validated. Please verify the provided information or try again later.
-(#N/A:WBxP--168940775-2835356554)
-Was this helpful
+    if records is None:
         records = load_appointments()
     return {
         r.get("time", "")
@@ -520,73 +514,50 @@ def filter_appointments(records, period):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  WHATSAPP NOTIFICATION  —  Meta WhatsApp Business API
+#  DOCTOR NOTIFICATION  —  Meta WhatsApp Business API
 #
 #  Called once after a successful appointment save.
-#  Message: "New Appointment\nCheck Dashboard: <link>"
-#  No patient details included.
-#
-#  Uses requests.post() for clarity and reliability.
-#  Requires META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER env vars.
+#  Sends only: "New Appointment\nCheck Dashboard: <link>"
+#  No patient details included. No args required.
 # ══════════════════════════════════════════════════════════════════
 
-def send_whatsapp_notification(appt):
+def send_whatsapp_notification():
     """
     Notify the clinic doctor via Meta WhatsApp Business API.
-    Sends only appointment alert + dashboard link — no patient details.
-    Returns True on success, False on any error (never raises).
+    Reads META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER from env.
+    Never raises — all errors are caught and printed.
     """
-    if not (META_TOKEN and META_PHONE_ID and DOCTOR_WHATSAPP_NUMBER):
-        print("[WhatsApp] Meta credentials not set — notification skipped.")
-        print("  Set META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER env vars.")
-        return False
-
     try:
+        token         = os.environ.get("META_TOKEN")
+        phone_id      = os.environ.get("META_PHONE_ID")
+        doctor_number = os.environ.get("DOCTOR_WHATSAPP_NUMBER")
+
+        if not token or not phone_id or not doctor_number:
+            print("❌ WhatsApp not configured — set META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER")
+            return
+
         base = get_base_url()
+        dashboard_url = f"{base}/{cfg('admin_path')}"
 
-        # Resolve the correct dashboard URL for this clinic
-        clinic_id = appt.get("clinic_id", "")
-        clinic    = CLINICS.get(clinic_id) if clinic_id else None
-        dashboard_url = (
-            f"{base}{clinic['dashboard']}" if clinic
-            else f"{base}/{cfg('admin_path')}"
-        )
+        url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
 
-        message_body = f"New Appointment\nCheck Dashboard: {dashboard_url}"
+        data = {
+            "messaging_product": "whatsapp",
+            "to":                doctor_number,
+            "type":              "text",
+            "text":              {"body": f"New Appointment\nCheck Dashboard: {dashboard_url}"},
+        }
 
-        api_url = f"https://graph.facebook.com/v19.0/{META_PHONE_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type":  "application/json",
+        }
 
-        resp = requests.post(
-            api_url,
-            headers={
-                "Authorization": f"Bearer {META_TOKEN}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "messaging_product": "whatsapp",
-                "to":                DOCTOR_WHATSAPP_NUMBER,
-                "type":              "text",
-                "text":              {"body": message_body},
-            },
-            timeout=10,
-        )
+        response = requests.post(url, headers=headers, json=data, timeout=10)
+        print("✅ Notification sent:", response.status_code)
 
-        if resp.status_code == 200:
-            print(f"[WhatsApp] Doctor notified. Dashboard: {dashboard_url}")
-            return True
-        else:
-            print(f"[WhatsApp] API error {resp.status_code}: {resp.text[:200]}")
-            return False
-
-    except requests.exceptions.Timeout:
-        print("[WhatsApp] Request timed out — notification skipped.")
-        return False
-    except requests.exceptions.ConnectionError:
-        print("[WhatsApp] Connection error — notification skipped.")
-        return False
-    except Exception as exc:
-        print(f"[WhatsApp] Unexpected error: {exc}")
-        return False
+    except Exception as e:
+        print("❌ Notification error:", e)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -632,7 +603,7 @@ SYMPTOM_KEYWORDS = (
     "cough", "flu", "fever", "cold", "headache", "pain", "nausea",
     "vomit", "diarrhea", "diarrhoea", "stomach", "throat", "runny",
     "sneeze", "chills", "fatigue", "tired", "sick", "ache", "aches",
-) 
+)
 
 def detect_symptom(text):
     lower = text.lower()
@@ -828,7 +799,7 @@ def chat():
                 # Send WhatsApp notification only after successful save
                 if saved:
                     try:
-                        send_whatsapp_notification(appt)
+                        send_whatsapp_notification()
                     except Exception as wa_exc:
                         print(f"[chat] WhatsApp notification error: {wa_exc}")
 
@@ -972,90 +943,95 @@ def api_appointments():
 #     💬 You can also ask your questions here"
 # ══════════════════════════════════════════════════════════════════
 
-@app.route("/whatsapp", methods=["GET"])
-def whatsapp_verify():
-    """
-    Meta webhook verification handshake.
-    Meta sends a GET with hub.challenge — we echo it back if the
-    verify token matches META_VERIFY_TOKEN.
-    """
-    mode      = request.args.get("hub.mode")
-    token     = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
+# ══════════════════════════════════════════════════════════════════
+#  WHATSAPP WEBHOOK  —  Meta WhatsApp Business API
+#
+#  SET UP in Meta Developer Console:
+#    App → WhatsApp → Configuration → Webhook
+#    Callback URL : https://your-domain.com/whatsapp
+#    Verify Token : abc123
+#    Subscribe to : messages
+#
+#  GET  — Meta one-time verification handshake
+#  POST — receives incoming patient messages, replies with booking link
+# ══════════════════════════════════════════════════════════════════
 
-    if mode == "subscribe" and token == META_VERIFY_TOKEN:
-        print("[WhatsApp] Webhook verified by Meta.")
-        return challenge, 200
-    return "Verification failed", 403
+@app.route("/whatsapp", methods=["GET", "POST"])
+def whatsapp():
 
+    # ── META VERIFICATION (one-time setup) ───────────────────────
+    if request.method == "GET":
+        mode      = request.args.get("hub.mode")
+        token     = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
 
-@app.route("/whatsapp", methods=["POST"])
-def whatsapp_webhook():
-    """
-    Receive incoming WhatsApp messages from patients via Meta API.
-    Reply with a welcome message containing the booking link.
+        if mode == "subscribe" and token == META_VERIFY_TOKEN:
+            return challenge, 200
+        else:
+            return "Verification failed", 403
 
-    The clinic is identified by ?clinic=<id> appended to the webhook
-    URL (configure per clinic in the Meta dashboard).
-    """
-    data = request.get_json(silent=True) or {}
-
-    # Extract the sender's phone number from the Meta payload
-    try:
-        entry   = data["entry"][0]
-        change  = entry["changes"][0]
-        value   = change["value"]
-        message = value["messages"][0]
-        sender  = message["from"]                   # patient's phone number
-    except (KeyError, IndexError):
-        # Not a message event (e.g. status update) — acknowledge and ignore
-        return jsonify({"status": "ok"}), 200
-
-    # Resolve clinic from ?clinic= query param
-    clinic_id  = request.args.get("clinic", "")
-    clinic_row = CLINICS.get(clinic_id)
-    base       = get_base_url()
-
-    if clinic_row:
-        clinic_name  = clinic_row["name"]
-        booking_link = f"{base}/?clinic={clinic_id}"
-    else:
-        clinic_name  = cfg("clinic_name")
-        booking_link = f"{base}/"
-
-    reply_text = (
-        f"Welcome to {clinic_name} 👋\n\n"
-        f"📅 Book Appointment:\n"
-        f"{booking_link}\n\n"
-        f"💬 You can also ask your questions here"
-    )
-
-    # Send the reply via Meta Cloud API using requests.post()
-    if META_TOKEN and META_PHONE_ID:
+    # ── RECEIVE PATIENT MESSAGE ───────────────────────────────────
+    if request.method == "POST":
         try:
-            api_url = f"https://graph.facebook.com/v19.0/{META_PHONE_ID}/messages"
-            resp = requests.post(
-                api_url,
-                headers={
-                    "Authorization": f"Bearer {META_TOKEN}",
-                    "Content-Type":  "application/json",
-                },
-                json={
-                    "messaging_product": "whatsapp",
-                    "to":                sender,
-                    "type":              "text",
-                    "text":              {"body": reply_text},
-                },
-                timeout=10,
-            )
-            print(f"[WhatsApp] Welcome reply sent to {sender}. Status: {resp.status_code}")
-        except Exception as exc:
-            print(f"[WhatsApp] Reply error: {exc}")
-    else:
-        print(f"[WhatsApp] Meta creds not set — would reply to {sender}: {reply_text}")
+            data = request.get_json()
 
-    # Always return 200 to Meta to acknowledge receipt
-    return jsonify({"status": "ok"}), 200
+            entry   = data.get("entry", [{}])[0]
+            changes = entry.get("changes", [{}])[0]
+            value   = changes.get("value", {})
+            messages = value.get("messages", [])
+
+            if not messages:
+                return jsonify({"status": "no message"}), 200
+
+            sender = messages[0].get("from")
+
+            # Resolve clinic name and booking link from ?clinic= param
+            clinic_id  = request.args.get("clinic", "")
+            clinic_row = CLINICS.get(clinic_id)
+            base       = get_base_url()
+
+            if clinic_row:
+                clinic_name  = clinic_row["name"]
+                booking_link = f"{base}/?clinic={clinic_id}"
+            else:
+                clinic_name  = cfg("clinic_name")
+                booking_link = f"{base}/"
+
+            reply_text = (
+                f"Welcome to {clinic_name} 👋\n\n"
+                "📅 Book Appointment:\n"
+                f"{booking_link}\n\n"
+                "💬 You can also ask your questions here"
+            )
+
+            token    = os.environ.get("META_TOKEN")
+            phone_id = os.environ.get("META_PHONE_ID")
+
+            if token and phone_id:
+                url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+                requests.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to":                sender,
+                        "type":              "text",
+                        "text":              {"body": reply_text},
+                    },
+                    timeout=10,
+                )
+                print(f"[WhatsApp] Welcome reply sent to {sender}")
+            else:
+                print(f"[WhatsApp] Meta creds not set — skipping reply to {sender}")
+
+            return jsonify({"status": "ok"}), 200
+
+        except Exception as e:
+            print("❌ WhatsApp webhook error:", e)
+            return jsonify({"status": "error"}), 200
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1124,6 +1100,7 @@ for _cid, _clinic_data in CLINICS.items():
     _path = _clinic_data["dashboard"]          # e.g. "/admin-abc"
     app.add_url_rule(_path, endpoint=f"clinic_admin_{_cid}",
                      view_func=_make_clinic_admin(_cid))
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
