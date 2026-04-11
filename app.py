@@ -69,7 +69,7 @@ CLINIC_CONFIG = {
 META_TOKEN             = os.environ.get("META_TOKEN", "")
 META_PHONE_ID          = os.environ.get("META_PHONE_ID", "")
 DOCTOR_WHATSAPP_NUMBER = os.environ.get("DOCTOR_WHATSAPP_NUMBER", "")
-META_VERIFY_TOKEN      = os.environ.get("META_VERIFY_TOKEN", "clinicbot123")
+META_VERIFY_TOKEN      = os.environ.get("META_VERIFY_TOKEN", "clinicbot")
 BASE_URL               = os.environ.get("BASE_URL", "").rstrip("/")
 
 # ══════════════════════════════════════════════════════════════════
