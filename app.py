@@ -20,6 +20,8 @@ import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests  (already installed with flask in most envs)
 
+
+
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
 # ══════════════════════════════════════════════════════════════════
@@ -67,7 +69,7 @@ CLINIC_CONFIG = {
 META_TOKEN             = os.environ.get("META_TOKEN", "")
 META_PHONE_ID          = os.environ.get("META_PHONE_ID", "")
 DOCTOR_WHATSAPP_NUMBER = os.environ.get("DOCTOR_WHATSAPP_NUMBER", "")
-META_VERIFY_TOKEN      = os.environ.get("META_VERIFY_TOKEN", "my_verify_token")
+META_VERIFY_TOKEN      = os.environ.get("META_VERIFY_TOKEN", "clinicbot123")
 BASE_URL               = os.environ.get("BASE_URL", "").rstrip("/")
 
 # ══════════════════════════════════════════════════════════════════
@@ -270,7 +272,11 @@ ALL_SLOTS = generate_time_slots()
 
 def get_booked_times(date_str, records=None):
     """Return set of time strings already taken for date_str."""
-    if records is None:
+    if records is None:Apps will only be able to receive test webhooks sent from the app dashboard while the app is unpublished. No production data, including from app admins, developers or testers, will be delivered unless the app has been published.
+​
+The callback URL or verify token couldn't be validated. Please verify the provided information or try again later.
+(#N/A:WBxP--168940775-2835356554)
+Was this helpful
         records = load_appointments()
     return {
         r.get("time", "")
@@ -626,7 +632,7 @@ SYMPTOM_KEYWORDS = (
     "cough", "flu", "fever", "cold", "headache", "pain", "nausea",
     "vomit", "diarrhea", "diarrhoea", "stomach", "throat", "runny",
     "sneeze", "chills", "fatigue", "tired", "sick", "ache", "aches",
-)
+) 
 
 def detect_symptom(text):
     lower = text.lower()
