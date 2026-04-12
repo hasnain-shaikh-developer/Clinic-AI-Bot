@@ -71,15 +71,15 @@ BASE_URL = os.environ.get("BASE_URL", "").rstrip("/")
 CLINICS = {
     "clinic1": {
         "name":                "ABC Clinic",
-        "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),   # from @BotFather
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),     # doctor's chat/group id
+        "telegram_bot_token":  os.getenv("TELEGRAM_BOT_TOKEN", "PASTE_BOT_TOKEN_HERE"),
+        "telegram_chat_id":    os.getenv("TELEGRAM_CHAT_ID",   "PASTE_CHAT_ID_HERE"),
         "dashboard":           "/admin-clinic1",
     },
     # Add more clinics here following the same pattern:
     # "clinic2": {
     #     "name":               "XYZ Clinic",
-    #     "telegram_bot_token": "...",
-    #     "telegram_chat_id":   "...",
+    #     "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN_2"),
+    #     "telegram_chat_id":   os.getenv("TELEGRAM_CHAT_ID_2"),
     #     "dashboard":          "/admin-clinic2",
     # },
 }
@@ -185,7 +185,7 @@ def save_appointment(appt):
                    VALUES (:id, :clinic_id, :name, :phone, :date, :time, :problem, :booked_at)""",
                 {
                     "id":        appt["id"],
-                    "clinic_id": appt.get("clinic_id", "clinic1"),
+                    "clinic_id": appt.get("clinic_id", ""),
                     "name":      appt["name"],
                     "phone":     appt["phone"],
                     "date":      appt["date"],
@@ -671,7 +671,13 @@ def chat():
         # ── Welcome (first load) ─────────────────────────────────────
         if step == "idle" and message == "":
             try:
-                clinic_id = body.get("clinic_id", "") or request.args.get("clinic", "")
+                # Read clinic_id from JSON body or URL param.
+                # Fall back to "clinic1" so it is NEVER saved as empty string.
+                clinic_id = (
+                    body.get("clinic_id")
+                    or request.args.get("clinic")
+                    or "clinic1"
+                )
                 session.update({"step": "idle", "data": {}, "clinic_id": clinic_id})
                 return jsonify(reply=welcome_text(), session=session)
             except Exception as exc:
@@ -793,7 +799,8 @@ def chat():
                 appt = {
                     **data,
                     "time":      assigned_time,
-                    "clinic_id": session.get("clinic_id", ""),
+                    # Never allow empty clinic_id — fall back to "clinic1"
+                    "clinic_id": session.get("clinic_id") or "clinic1",
                     "id":        datetime.now().strftime("%Y%m%d%H%M%S"),
                     "booked_at": datetime.now().isoformat(),
                 }
@@ -801,23 +808,36 @@ def chat():
                 # Save to SQLite — single insert, no duplicates possible
                 saved = save_appointment(appt)
 
-                # Send Telegram notification to clinic doctor after successful save
+                # Send Telegram notification — re-fetch from DB to confirm
+                # the saved clinic_id rather than trusting in-memory state
                 if saved:
                     try:
-                        clinic_id  = appt.get("clinic_id", "")
-                        clinic_row = CLINICS.get(clinic_id)
-                        if clinic_row:
-                            base          = get_base_url()
-                            dashboard_url = f"{base}{clinic_row['dashboard']}"
-                            send_telegram_notification(
-                                clinic_row["telegram_bot_token"],
-                                clinic_row["telegram_chat_id"],
-                                f"New Appointment\nCheck Dashboard:\n{dashboard_url}"
-                            )
+                        conn   = get_db()
+                        cursor = conn.execute(
+                            "SELECT * FROM appointments ORDER BY booked_at DESC LIMIT 1"
+                        )
+                        row = cursor.fetchone()
+                        conn.close()
+
+                        if row:
+                            # Use saved clinic_id; fall back to "clinic1" if blank
+                            cid        = row["clinic_id"] if row["clinic_id"] else "clinic1"
+                            clinic_row = CLINICS.get(cid)
+
+                            if clinic_row:
+                                dashboard_url = f"{get_base_url()}{clinic_row['dashboard']}"
+                                send_telegram_notification(
+                                    clinic_row["telegram_bot_token"],
+                                    clinic_row["telegram_chat_id"],
+                                    f"New Appointment\nCheck Dashboard:\n{dashboard_url}"
+                                )
+                            else:
+                                print(f"[Telegram] Clinic config not found: {cid!r}")
                         else:
-                            print(f"[Telegram] No clinic config for clinic_id={clinic_id!r}")
+                            print("[Telegram] No appointment found in DB")
+
                     except Exception as tg_exc:
-                        print(f"[Telegram] Notification error: {tg_exc}")
+                        print("[Telegram] Error:", tg_exc)
 
                 confirmation = (
                     "Appointment Received\n\n"
@@ -1006,6 +1026,7 @@ for _cid, _clinic_data in CLINICS.items():
     _path = _clinic_data["dashboard"]          # e.g. "/admin-abc"
     app.add_url_rule(_path, endpoint=f"clinic_admin_{_cid}",
                      view_func=_make_clinic_admin(_cid))
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
