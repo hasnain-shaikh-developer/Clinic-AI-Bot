@@ -5,20 +5,20 @@
 ╠══════════════════════════════════════════════════════════════════╣
 ║  HOW TO CUSTOMISE FOR A NEW CLIENT:                             ║
 ║    1.  Edit CLINIC_CONFIG below — nothing else needs changing.  ║
-║    2.  Set Meta WhatsApp env vars for notifications.            ║
-║    3.  To reset appointment data: empty appointments.json       ║
-║        or delete the file — it is recreated automatically.      ║
+║    2.  Fill in telegram_bot_token / telegram_chat_id in CLINICS.║
+║    3.  To reset appointment data: delete appointments.db        ║
+║        — it is recreated automatically on next startup.         ║
 ║                                                                 ║
 ║  MULTI-CLIENT SAFETY:                                           ║
 ║    Keep each client in a separate project folder.               ║
-║    Never share the same appointments.json across clients.       ║
+║    Never share the same appointments.db across clients.         ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
-from flask import Flask, request, jsonify, render_template, make_response
+from flask import Flask, request, jsonify, render_template
 import json, os, sqlite3
 from datetime import datetime, date, timedelta
-import requests   # pip install requests  (already installed with flask in most envs)
+import requests   # pip install requests
 
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
@@ -55,40 +55,33 @@ CLINIC_CONFIG = {
     "site_url":               "http://localhost:5000",
 }
 
-# ── Meta WhatsApp Business API credentials ───────────────────────
-# Set these environment variables on your server. Never hardcode.
-#
-#   META_TOKEN               — your permanent access token from Meta developer console
-#   META_PHONE_ID            — Phone Number ID from WhatsApp Business API settings
-#   DOCTOR_WHATSAPP_NUMBER   — doctor's WhatsApp number in E.164, e.g. +923001234567
-#   META_VERIFY_TOKEN        — any secret string you choose for webhook verification
-#   BASE_URL                 — public domain, e.g. https://yourclinic.com (no trailing slash)
-#
-META_TOKEN             = os.environ.get("META_TOKEN", "")
-META_PHONE_ID          = os.environ.get("META_PHONE_ID", "")
-DOCTOR_WHATSAPP_NUMBER = os.environ.get("DOCTOR_WHATSAPP_NUMBER", "")
-META_VERIFY_TOKEN      = "abc123"   # hardcoded — must match your Meta webhook config
-BASE_URL               = os.environ.get("BASE_URL", "").rstrip("/")
+# ── Base URL for building dashboard links in notifications ────────
+# Set BASE_URL env var to your public domain, e.g. https://yourclinic.com
+# Falls back to CLINIC_CONFIG site_url for local testing.
+BASE_URL = os.environ.get("BASE_URL", "").rstrip("/")
 
 # ══════════════════════════════════════════════════════════════════
 #  MULTI-CLINIC REGISTRY
 #  Add one entry per clinic. clinic_id must match the ?clinic= param
-#  used in booking links and the WhatsApp webhook.
+#  in booking links.
 #
-#  doctor_number : E.164, no "whatsapp:" prefix (added automatically)
-#  dashboard     : URL path for that clinic's admin page
+#  Each clinic has its own Telegram bot + chat_id for notifications.
+#  Get these from @BotFather on Telegram.
 # ══════════════════════════════════════════════════════════════════
 CLINICS = {
-    "abc": {
-        "name":           "ABC Clinic",
-        "doctor_number":  "+123456789",     # ← replace with real number
-        "dashboard":      "/admin-abc",
+    "clinic1": {
+        "name":                "ABC Clinic",
+        "telegram_bot_token":  "8721116671:AAHsJhHUEyfNccIKoz4dMUooLEUzz1SQ4h0",   # from @BotFather
+        "telegram_chat_id":    "8074427273",     # doctor's chat/group id
+        "dashboard":           "/admin-clinic1",
     },
-    "xyz": {
-        "name":           "XYZ Clinic",
-        "doctor_number":  "+987654321",     # ← replace with real number
-        "dashboard":      "/admin-xyz",
-    },
+    # Add more clinics here following the same pattern:
+    # "clinic2": {
+    #     "name":               "XYZ Clinic",
+    #     "telegram_bot_token": "...",
+    #     "telegram_chat_id":   "...",
+    #     "dashboard":          "/admin-clinic2",
+    # },
 }
 
 def get_base_url():
@@ -287,14 +280,47 @@ def count_booked(date_str, records=None):
 
 
 def next_free_slot(date_str, records=None):
-    """Return the next unbooked slot string, or None if all full."""
+    """
+    Return the next available (unbooked AND in the future) time slot
+    for date_str.
+
+    Rules:
+      - A slot is "available" only if it is not already booked.
+      - For TODAY: also skip slots whose time has already passed.
+        e.g. if current time is 11:30 AM, slots at 9:00 AM and
+        10:00 AM are ignored — the next candidate is 12:00 PM or later.
+      - For FUTURE dates: time comparison is skipped (all unbooked
+        slots are valid).
+      - Returns None if no slots remain (caller should suggest next day).
+    """
     if records is None:
         records = load_appointments()
-    booked = get_booked_times(date_str, records)
+
+    booked     = get_booked_times(date_str, records)
+    today_fmt  = format_date(date.today())
+    is_today   = (date_str.lower() == today_fmt.lower())
+    now        = datetime.now()
+
     for slot in ALL_SLOTS:
-        if slot not in booked:
-            return slot
-    return None
+        if slot in booked:
+            continue                           # already taken
+
+        if is_today:
+            # Parse the slot time and compare against current wall clock
+            try:
+                slot_t = datetime.strptime(slot, "%I:%M %p")
+                slot_dt = now.replace(
+                    hour=slot_t.hour, minute=slot_t.minute,
+                    second=0, microsecond=0
+                )
+                if slot_dt <= now:
+                    continue                   # this slot is in the past
+            except ValueError:
+                pass                           # unparseable — include it
+
+        return slot                            # first future unbooked slot
+
+    return None                                # all slots gone
 
 
 def find_next_open_date(from_date, records=None):
@@ -514,50 +540,29 @@ def filter_appointments(records, period):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  DOCTOR NOTIFICATION  —  Meta WhatsApp Business API
+#  TELEGRAM NOTIFICATION
 #
 #  Called once after a successful appointment save.
-#  Sends only: "New Appointment\nCheck Dashboard: <link>"
-#  No patient details included. No args required.
+#  Each clinic has its own bot_token + chat_id in CLINICS registry.
+#  Message: "New Appointment\nCheck Dashboard: <link>"
+#  No patient details included. Never raises.
 # ══════════════════════════════════════════════════════════════════
 
-def send_whatsapp_notification():
+def send_telegram_notification(bot_token, chat_id, message):
     """
-    Notify the clinic doctor via Meta WhatsApp Business API.
-    Reads META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER from env.
-    Never raises — all errors are caught and printed.
+    Send a Telegram message via the Bot API.
+    Uses requests.post() — never raises (errors are printed only).
     """
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        token         = os.environ.get("META_TOKEN")
-        phone_id      = os.environ.get("META_PHONE_ID")
-        doctor_number = os.environ.get("DOCTOR_WHATSAPP_NUMBER")
-
-        if not token or not phone_id or not doctor_number:
-            print("❌ WhatsApp not configured — set META_TOKEN, META_PHONE_ID, DOCTOR_WHATSAPP_NUMBER")
-            return
-
-        base = get_base_url()
-        dashboard_url = f"{base}/{cfg('admin_path')}"
-
-        url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
-
-        data = {
-            "messaging_product": "whatsapp",
-            "to":                doctor_number,
-            "type":              "text",
-            "text":              {"body": f"New Appointment\nCheck Dashboard: {dashboard_url}"},
-        }
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type":  "application/json",
-        }
-
-        response = requests.post(url, headers=headers, json=data, timeout=10)
-        print("✅ Notification sent:", response.status_code)
-
+        resp = requests.post(
+            url,
+            json={"chat_id": chat_id, "text": message},
+            timeout=10,
+        )
+        print(f"[Telegram] Notification sent. Status: {resp.status_code}")
     except Exception as e:
-        print("❌ Notification error:", e)
+        print("Telegram Error:", e)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -796,12 +801,23 @@ def chat():
                 # Save to SQLite — single insert, no duplicates possible
                 saved = save_appointment(appt)
 
-                # Send WhatsApp notification only after successful save
+                # Send Telegram notification to clinic doctor after successful save
                 if saved:
                     try:
-                        send_whatsapp_notification()
-                    except Exception as wa_exc:
-                        print(f"[chat] WhatsApp notification error: {wa_exc}")
+                        clinic_id  = appt.get("clinic_id", "")
+                        clinic_row = CLINICS.get(clinic_id)
+                        if clinic_row:
+                            base          = get_base_url()
+                            dashboard_url = f"{base}{clinic_row['dashboard']}"
+                            send_telegram_notification(
+                                clinic_row["telegram_bot_token"],
+                                clinic_row["telegram_chat_id"],
+                                f"New Appointment\nCheck Dashboard:\n{dashboard_url}"
+                            )
+                        else:
+                            print(f"[Telegram] No clinic config for clinic_id={clinic_id!r}")
+                    except Exception as tg_exc:
+                        print(f"[Telegram] Notification error: {tg_exc}")
 
                 confirmation = (
                     "Appointment Received\n\n"
@@ -925,116 +941,6 @@ def api_appointments():
 
 
 # ══════════════════════════════════════════════════════════════════
-#  WHATSAPP WEBHOOK  —  Meta WhatsApp Business API
-#
-#  SET UP in Meta Developer Console:
-#    App → WhatsApp → Configuration → Webhook
-#    Callback URL : https://your-domain.com/whatsapp
-#    Verify Token : value of META_VERIFY_TOKEN env var
-#    Subscribe to : messages
-#
-#  GET  /whatsapp  — Meta verification handshake (one-time setup)
-#  POST /whatsapp  — receives incoming patient messages
-#
-#  Reply format (sent back via Meta Cloud API):
-#    "Welcome to <Clinic Name> 👋
-#     📅 Book Appointment:
-#     <booking link>
-#     💬 You can also ask your questions here"
-# ══════════════════════════════════════════════════════════════════
-
-# ══════════════════════════════════════════════════════════════════
-#  WHATSAPP WEBHOOK  —  Meta WhatsApp Business API
-#
-#  SET UP in Meta Developer Console:
-#    App → WhatsApp → Configuration → Webhook
-#    Callback URL : https://your-domain.com/whatsapp
-#    Verify Token : abc123
-#    Subscribe to : messages
-#
-#  GET  — Meta one-time verification handshake
-#  POST — receives incoming patient messages, replies with booking link
-# ══════════════════════════════════════════════════════════════════
-
-@app.route("/whatsapp", methods=["GET", "POST"])
-def whatsapp():
-
-    # ── META VERIFICATION (one-time setup) ───────────────────────
-    if request.method == "GET":
-        mode      = request.args.get("hub.mode")
-        token     = request.args.get("hub.verify_token")
-        challenge = request.args.get("hub.challenge")
-
-        if mode == "subscribe" and token == META_VERIFY_TOKEN:
-            return challenge, 200
-        else:
-            return "Verification failed", 403
-
-    # ── RECEIVE PATIENT MESSAGE ───────────────────────────────────
-    if request.method == "POST":
-        try:
-            data = request.get_json()
-
-            entry   = data.get("entry", [{}])[0]
-            changes = entry.get("changes", [{}])[0]
-            value   = changes.get("value", {})
-            messages = value.get("messages", [])
-
-            if not messages:
-                return jsonify({"status": "no message"}), 200
-
-            sender = messages[0].get("from")
-
-            # Resolve clinic name and booking link from ?clinic= param
-            clinic_id  = request.args.get("clinic", "")
-            clinic_row = CLINICS.get(clinic_id)
-            base       = get_base_url()
-
-            if clinic_row:
-                clinic_name  = clinic_row["name"]
-                booking_link = f"{base}/?clinic={clinic_id}"
-            else:
-                clinic_name  = cfg("clinic_name")
-                booking_link = f"{base}/"
-
-            reply_text = (
-                f"Welcome to {clinic_name} 👋\n\n"
-                "📅 Book Appointment:\n"
-                f"{booking_link}\n\n"
-                "💬 You can also ask your questions here"
-            )
-
-            token    = os.environ.get("META_TOKEN")
-            phone_id = os.environ.get("META_PHONE_ID")
-
-            if token and phone_id:
-                url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
-                requests.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type":  "application/json",
-                    },
-                    json={
-                        "messaging_product": "whatsapp",
-                        "to":                sender,
-                        "type":              "text",
-                        "text":              {"body": reply_text},
-                    },
-                    timeout=10,
-                )
-                print(f"[WhatsApp] Welcome reply sent to {sender}")
-            else:
-                print(f"[WhatsApp] Meta creds not set — skipping reply to {sender}")
-
-            return jsonify({"status": "ok"}), 200
-
-        except Exception as e:
-            print("❌ WhatsApp webhook error:", e)
-            return jsonify({"status": "error"}), 200
-
-
-# ══════════════════════════════════════════════════════════════════
 #  PER-CLINIC ADMIN DASHBOARDS
 #  Each clinic in CLINICS gets its own route: /admin-<id>
 #  These are generated automatically — no manual route needed when
@@ -1100,7 +1006,6 @@ for _cid, _clinic_data in CLINICS.items():
     _path = _clinic_data["dashboard"]          # e.g. "/admin-abc"
     app.add_url_rule(_path, endpoint=f"clinic_admin_{_cid}",
                      view_func=_make_clinic_admin(_cid))
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
