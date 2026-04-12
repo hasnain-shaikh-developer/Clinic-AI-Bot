@@ -185,7 +185,7 @@ def save_appointment(appt):
                    VALUES (:id, :clinic_id, :name, :phone, :date, :time, :problem, :booked_at)""",
                 {
                     "id":        appt["id"],
-                    "clinic_id": appt.get("clinic_id", ""),
+                    "clinic_id": appt.get("clinic_id", "clinic1"),
                     "name":      appt["name"],
                     "phone":     appt["phone"],
                     "date":      appt["date"],
