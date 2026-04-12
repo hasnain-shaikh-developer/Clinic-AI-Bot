@@ -71,8 +71,8 @@ BASE_URL = os.environ.get("BASE_URL", "").rstrip("/")
 CLINICS = {
     "clinic1": {
         "name":                "ABC Clinic",
-        "telegram_bot_token":  "PASTE_BOT_TOKEN_HERE",   # from @BotFather
-        "telegram_chat_id":    "PASTE_CHAT_ID_HERE",     # doctor's chat/group id
+        "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),   # from @BotFather
+        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),     # doctor's chat/group id
         "dashboard":           "/admin-clinic1",
     },
     # Add more clinics here following the same pattern:
