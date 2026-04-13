@@ -785,20 +785,35 @@ def chat():
                 assigned_time = next_free_slot(data["date"], records)
 
                 if assigned_time is None:
-                    next_d = find_next_open_date(
-                        parse_user_date(data["date"]) + timedelta(days=1), records
+                    # Today's slots are all either booked or already past.
+                    # Automatically move to the next day that has free slots
+                    # and assign its first available time — no user restart needed.
+                    parsed_appt_date = parse_user_date(data["date"])
+                    if parsed_appt_date is None:
+                        parsed_appt_date = date.today()
+
+                    next_d        = find_next_open_date(
+                        parsed_appt_date + timedelta(days=1), records
                     )
-                    session.update({"step": "idle", "data": {}})
-                    return jsonify(
-                        reply=(
-                            f"That date just filled up. "
-                            f"Please book again and select {format_date(next_d)} instead."
-                        ),
-                        session=session
-                    )
+                    next_d_str    = format_date(next_d)
+                    assigned_time = next_free_slot(next_d_str, records)
+
+                    if assigned_time is None:
+                        # Extremely unlikely — every slot in the next 60 days is booked
+                        session.update({"step": "idle", "data": {}})
+                        return jsonify(
+                            reply=(
+                                "No available slots found in the next 60 days. "
+                                "Please contact the clinic directly."
+                            ),
+                            session=session
+                        )
+
+                    # Update the booking date to the auto-assigned next day
+                    data["date"] = next_d_str
 
                 appt = {
-                    **data,
+                    **data,                  # includes updated data["date"] if auto-shifted
                     "time":      assigned_time,
                     # Never allow empty clinic_id — fall back to "clinic1"
                     "clinic_id": session.get("clinic_id") or "clinic1",
@@ -821,7 +836,6 @@ def chat():
                         conn.close()
 
                         if row:
-                            # Use saved clinic_id; fall back to "clinic1" if blank
                             cid        = row["clinic_id"] if row["clinic_id"] else "clinic1"
                             clinic_row = CLINICS.get(cid)
 
@@ -847,7 +861,7 @@ def chat():
                     f"Date    : {appt['date']}\n"
                     f"Time    : {appt['time']}\n"
                     f"Problem : {appt['problem']}\n\n"
-                    f"Your appointment request has been received for "
+                    f"Your appointment has been confirmed for "
                     f"*{appt['date']}* at *{appt['time']}*.\n"
                     "Our team will contact you shortly.\n\n"
                     f"Consultation fee: {cfg('clinic_fees')}\n"
@@ -1039,10 +1053,6 @@ for _cid, _clinic_data in CLINICS.items():
     _path = _clinic_data["dashboard"]          # e.g. "/admin-abc"
     app.add_url_rule(_path, endpoint=f"clinic_admin_{_cid}",
                      view_func=_make_clinic_admin(_cid))
-
-
-if __name__ == "__main__":
-    app.run(port=5000)
 
 
 if __name__ == "__main__":
