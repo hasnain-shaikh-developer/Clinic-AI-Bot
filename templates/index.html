@@ -318,8 +318,17 @@
         box-shadow: none;
       }
     }
+    /* Tablet: give the card comfortable width without going full-screen */
+    @media (min-width: 501px) and (max-width: 859px) {
+      .chat-card { max-width: 90vw; }
+    }
     @media (min-width: 860px) {
       .chat-card { max-width: 500px; }
+    }
+    /* Quick-strip buttons: fill row evenly when only 2 fit on very narrow phones */
+    @media (max-width: 360px) {
+      .quick-strip { gap: 5px; }
+      .qa          { font-size: 11px; padding: 6px 10px; }
     }
   </style>
 </head>

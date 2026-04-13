@@ -36,6 +36,7 @@
       background: var(--surface);
       color: var(--text);
       min-height: 100vh;
+      overflow-x: hidden;           /* prevent any stray element causing horizontal scroll */
       -webkit-font-smoothing: antialiased;
     }
 
@@ -58,7 +59,9 @@
       flex-shrink: 0;
     }
     .nav-logo i { color: #fff; font-size: 16px; }
-    .nav-title h1 { color: #fff; font-size: 16px; font-weight: 700; }
+    .nav-title { min-width: 0; flex: 1; }   /* allows text-overflow: ellipsis to work */
+    .nav-title h1 { color: #fff; font-size: 16px; font-weight: 700;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .nav-title p  { color: rgba(255,255,255,.6); font-size: 11px; }
     .nav-back {
       margin-left: auto;
@@ -238,7 +241,8 @@
       font-size: 12.5px; font-family: var(--font);
       color: var(--text);
       background: var(--white);
-      outline: none; width: 220px;
+      outline: none;
+      width: clamp(160px, 30vw, 260px);  /* fluid: never overflows, never too tiny */
       transition: border-color .18s;
     }
     #search:focus { border-color: var(--primary); }
@@ -251,7 +255,10 @@
       overflow: hidden;
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
     }
-    .tbl-scroll { overflow-x: auto; }
+    .tbl-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch; /* smooth momentum scroll on iOS */
+    }
 
     table { width: 100%; border-collapse: collapse; min-width: 580px; }
     thead { background: var(--primary); }
@@ -320,6 +327,16 @@
     .empty p  { font-size: 13px; color: var(--muted); }
 
     /* ── Responsive ──────────────────────────────────────────────── */
+
+    /* Tablet (681 – 900 px) — tighten padding, search goes full width */
+    @media (max-width: 900px) and (min-width: 681px) {
+      .content   { padding: 20px 16px 48px; }
+      .topnav    { padding: 0 18px; }
+      #search    { width: 100%; }
+      .search-wrap { margin-left: 0; width: 100%; }
+      .table-header { flex-direction: column; align-items: flex-start; }
+    }
+
     @media (max-width: 680px) {
       .topnav        { padding: 0 14px; }
       .content       { padding: 16px 12px 40px; }
@@ -328,9 +345,20 @@
       .table-header  { flex-direction: column; align-items: flex-start; }
       .clinic-card   { padding: 14px; }
       .filter-result { margin-left: 0; }
+      /* filter pills wrap on narrow screens */
+      .filter-pills  { gap: 5px; }
+      .fp            { font-size: 11.5px; padding: 5px 11px; }
+      /* truncate long clinic name in nav */
+      .nav-title h1  { font-size: 14px; max-width: 140px; }
     }
     @media (max-width: 420px) {
       .stats { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 340px) {
+      /* very small phones — stack stats vertically */
+      .stats         { grid-template-columns: 1fr; }
+      .filter-pills  { flex-direction: column; }
+      .fp            { width: 100%; text-align: center; }
     }
   </style>
 </head>

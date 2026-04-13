@@ -92,9 +92,10 @@ def get_base_url():
 app = Flask(__name__)
 
 # ── SQLite database ───────────────────────────────────────────────
-# Each clinic deployment keeps its own appointments.db file.
-# To reset data: delete appointments.db — it is recreated on startup.
-DB_PATH = "appointments.db"
+# Absolute path prevents appointments disappearing when the working
+# directory changes (common on Render, Railway, and similar hosts).
+# To reset: delete appointments.db — it is recreated on startup.
+DB_PATH = os.path.join(os.getcwd(), "appointments.db")
 
 
 def cfg(key):
@@ -829,7 +830,7 @@ def chat():
                                 send_telegram_notification(
                                     clinic_row["telegram_bot_token"],
                                     clinic_row["telegram_chat_id"],
-                                    f"New Appointment\nCheck Dashboard:\n{dashboard_url}"
+                                    f"New Appointment: {row['name']}\nCheck Dashboard:\n{dashboard_url}"
                                 )
                             else:
                                 print(f"[Telegram] Clinic config not found: {cid!r}")
@@ -960,6 +961,18 @@ def api_appointments():
         return jsonify([])
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Suppress 404 errors for browser favicon requests."""
+    return "", 204
+
+
+@app.route("/ping")
+def ping():
+    """Health-check / uptime-monitor endpoint — keeps Render app warm."""
+    return "ok", 200
+
+
 # ══════════════════════════════════════════════════════════════════
 #  PER-CLINIC ADMIN DASHBOARDS
 #  Each clinic in CLINICS gets its own route: /admin-<id>
@@ -1026,6 +1039,10 @@ for _cid, _clinic_data in CLINICS.items():
     _path = _clinic_data["dashboard"]          # e.g. "/admin-abc"
     app.add_url_rule(_path, endpoint=f"clinic_admin_{_cid}",
                      view_func=_make_clinic_admin(_cid))
+
+
+if __name__ == "__main__":
+    app.run(port=5000)
 
 
 if __name__ == "__main__":
