@@ -177,8 +177,10 @@ def save_appointment(appt):
     Opens connection → inserts → commits → closes.
     Returns True on success, False on any error (never raises).
     """
+    print(f"[DEBUG] save_appointment called with: {appt}")
     try:
         conn = get_db()
+        print(f"[DEBUG] Database connection opened: {DB_PATH}")
         try:
             conn.execute(
                 """INSERT INTO appointments
@@ -196,6 +198,7 @@ def save_appointment(appt):
                 }
             )
             conn.commit()
+            print(f"[DEBUG] Appointment saved successfully")
             return True
         finally:
             conn.close()
@@ -822,7 +825,9 @@ def chat():
                 }
 
                 # Save to SQLite — single insert, no duplicates possible
+                print(f"[DEBUG] Saving appointment: {appt}")
                 saved = save_appointment(appt)
+                print(f"[DEBUG] Save result: {saved}")
 
                 # Send Telegram notification — re-fetch from DB to confirm
                 # the saved clinic_id rather than trusting in-memory state
