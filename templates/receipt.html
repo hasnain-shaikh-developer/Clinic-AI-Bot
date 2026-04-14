@@ -330,36 +330,23 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNa4zfihVBQ8Iy6cM9u4e9km/310JSq/TiEq/xMnox1uM8yX4iw8lmBypv/K7uUvFWsgBanF4dJ2uYc7SxUuYA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-zC7QbUo/Wokw6QwCEaOQj8qz7K5bAi7a3ZzzuV90dWvBwvrx5I8/h3blAht63sY3Gf7lzc+8GQv7z+v1jA3Xcw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIPzT0t8ET51k/PDr1yeM9OGWrKJ0RF8C+JSzrK9i5W80HGfQGi5B2V4vA5wRkzGjp1Y3IkyFayR9rrNtYpg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
-    async function downloadReceipt() {
+    function downloadReceipt() {
       const receipt = document.querySelector('.receipt-container');
       if (!receipt) return;
 
-      const { jsPDF } = window.jspdf || {};
-      if (!jsPDF) {
-        alert('PDF download is unavailable right now. Please try again later.');
-        return;
-      }
+      const opt = {
+        margin: 10,
+        filename: `appointment-receipt-{{ appointment.id }}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+      };
 
-      const canvas = await html2canvas(receipt, {
-        scale: 2,
-        backgroundColor: '#ffffff',
+      html2pdf().set(opt).from(receipt).save().catch(() => {
+        alert('PDF download failed. Please try again.');
       });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth - 40;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-      const ratio = Math.min(1, (pageHeight - 40) / imgHeight);
-      pdf.addImage(imgData, 'PNG', 20, 20, imgWidth * ratio, imgHeight * ratio);
-      pdf.save(`appointment-receipt-{{ appointment.id }}.pdf`);
     }
 
     const style = document.createElement('style');
