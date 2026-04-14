@@ -330,11 +330,26 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIPzT0t8ET51k/PDr1yeM9OGWrKJ0RF8C+JSzrK9i5W80HGfQGi5B2V4vA5wRkzGjp1Y3IkyFayR9rrNtYpg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
   <script>
     function downloadReceipt() {
       const receipt = document.querySelector('.receipt-container');
       if (!receipt) return;
+
+      if (typeof html2pdf === 'undefined') {
+        const loader = document.createElement('script');
+        loader.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js';
+        loader.onload = () => {
+          if (typeof html2pdf !== 'undefined') {
+            downloadReceipt();
+          } else {
+            alert('PDF download is unavailable right now. Please try again later.');
+          }
+        };
+        loader.onerror = () => alert('PDF download is unavailable right now. Please try again later.');
+        document.body.appendChild(loader);
+        return;
+      }
 
       const opt = {
         margin: 10,
