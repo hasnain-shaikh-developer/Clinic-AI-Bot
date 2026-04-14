@@ -855,7 +855,11 @@ def chat():
                     f"*{appt['date']}* at *{appt['time']}*.\n"
                     "Our team will contact you shortly.\n\n"
                     f"Consultation fee: {cfg('clinic_fees')}\n"
-                    "Please arrive 10 minutes before your appointment."
+                    "Please arrive 10 minutes before your appointment.\n\n"
+                    f"📄 [View Receipt]({get_base_url()}/receipt?"
+                    f"name={appt['name']}&phone={appt['phone']}&"
+                    f"date={appt['date']}&time={appt['time']}&"
+                    f"problem={appt['problem']}&id={appt['id']})"
                 )
 
                 session.update({"step": "idle", "data": {}})
@@ -975,6 +979,39 @@ def favicon():
 def ping():
     """Health-check / uptime-monitor endpoint — keeps Render app warm."""
     return "ok", 200
+
+
+@app.route("/receipt")
+def receipt():
+    """Appointment receipt page with download option."""
+    try:
+        # Get appointment data from URL parameters
+        appt_data = {
+            "name":     request.args.get("name", ""),
+            "phone":    request.args.get("phone", ""),
+            "date":     request.args.get("date", ""),
+            "time":     request.args.get("time", ""),
+            "problem":  request.args.get("problem", ""),
+            "id":       request.args.get("id", ""),
+        }
+
+        # If no data in URL, show error
+        if not any(appt_data.values()):
+            return render_template("receipt.html",
+                                 appointment=None,
+                                 clinic=CLINIC_CONFIG,
+                                 error="No appointment data found.")
+
+        return render_template("receipt.html",
+                             appointment=appt_data,
+                             clinic=CLINIC_CONFIG)
+
+    except Exception as exc:
+        print(f"[receipt] Error: {exc}")
+        return render_template("receipt.html",
+                             appointment=None,
+                             clinic=CLINIC_CONFIG,
+                             error="Something went wrong loading the receipt.")
 
 
 # ══════════════════════════════════════════════════════════════════
