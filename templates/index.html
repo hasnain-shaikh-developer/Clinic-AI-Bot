@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ clinic.clinic_name }} — Appointment Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
   <style>
     /* ── Design tokens ───────────────────────────────────────────── */
     :root {
@@ -457,6 +457,13 @@
       hideTyping();
       session = data.session || {};
       addMsg(data.reply, 'bot');
+
+      // Redirect to receipt page after successful booking
+      if (data.success_url) {
+        setTimeout(() => {
+          window.location.href = data.success_url;
+        }, 2200);   // short pause so the user sees the confirmation bubble
+      }
     } catch {
       hideTyping();
       addMsg('Connection error. Please try again.', 'bot');
