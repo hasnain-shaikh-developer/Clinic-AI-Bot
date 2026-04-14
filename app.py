@@ -15,7 +15,7 @@
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
-from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask import Flask, request, jsonify, render_template
 import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests
@@ -824,32 +824,22 @@ def chat():
                 # Save to SQLite — single insert, no duplicates possible
                 saved = save_appointment(appt)
 
-                # Send Telegram notification — re-fetch from DB to confirm
-                # the saved clinic_id rather than trusting in-memory state
+                # Send Telegram notification using the appointment data we have
+                # Don't query DB — use the appt object directly (avoids conflicts with other instances)
                 if saved:
                     try:
-                        conn   = get_db()
-                        cursor = conn.execute(
-                            "SELECT * FROM appointments ORDER BY booked_at DESC LIMIT 1"
-                        )
-                        row = cursor.fetchone()
-                        conn.close()
+                        cid        = appt.get("clinic_id") or "clinic1"
+                        clinic_row = CLINICS.get(cid)
 
-                        if row:
-                            cid        = row["clinic_id"] if row["clinic_id"] else "clinic1"
-                            clinic_row = CLINICS.get(cid)
-
-                            if clinic_row:
-                                dashboard_url = f"{get_base_url()}{clinic_row['dashboard']}"
-                                send_telegram_notification(
-                                    clinic_row["telegram_bot_token"],
-                                    clinic_row["telegram_chat_id"],
-                                    f"New Appointment: {row['name']}\nCheck Dashboard:\n{dashboard_url}"
-                                )
-                            else:
-                                print(f"[Telegram] Clinic config not found: {cid!r}")
+                        if clinic_row:
+                            dashboard_url = f"{get_base_url()}{clinic_row['dashboard']}"
+                            send_telegram_notification(
+                                clinic_row["telegram_bot_token"],
+                                clinic_row["telegram_chat_id"],
+                                f"New Appointment: {appt['name']}\nCheck Dashboard:\n{dashboard_url}"
+                            )
                         else:
-                            print("[Telegram] No appointment found in DB")
+                            print(f"[Telegram] Clinic config not found: {cid!r}")
 
                     except Exception as tg_exc:
                         print("[Telegram] Error:", tg_exc)
@@ -869,11 +859,7 @@ def chat():
                 )
 
                 session.update({"step": "idle", "data": {}})
-                return jsonify(
-                    reply       = confirmation,
-                    session     = session,
-                    success_url = f"/success/{appt['id']}"  # triggers redirect in JS
-                )
+                return jsonify(reply=confirmation, session=session)
 
             except Exception as exc:
                 print(f"[chat/booking-flow] Unhandled error: {exc}")
@@ -989,48 +975,6 @@ def favicon():
 def ping():
     """Health-check / uptime-monitor endpoint — keeps Render app warm."""
     return "ok", 200
-
-
-@app.route("/success/<appt_id>")
-def success(appt_id):
-    """
-    Receipt page shown after a successful booking.
-    Fetches the appointment from SQLite by id and renders the receipt.
-    """
-    try:
-        conn = get_db()
-        row  = conn.execute(
-            "SELECT * FROM appointments WHERE id = ?", (appt_id,)
-        ).fetchone()
-        conn.close()
-
-        if not row:
-            return redirect("/")
-
-        appt = dict(row)
-        return render_template("success.html", appt=appt, clinic=CLINIC_CONFIG)
-
-    except Exception as exc:
-        print(f"[success] Error: {exc}")
-        return redirect("/")
-
-
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/clear", methods=["POST"])
-def admin_clear():
-    """
-    Admin-only: delete ALL appointments (useful for testing).
-    POST to /<admin_path>/clear — requires no body.
-    Protect this URL — share only with the clinic owner.
-    """
-    try:
-        conn = get_db()
-        conn.execute("DELETE FROM appointments")
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "cleared"}), 200
-    except Exception as exc:
-        print(f"[admin_clear] Error: {exc}")
-        return jsonify({"status": "error", "detail": str(exc)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════
