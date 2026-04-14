@@ -456,6 +456,16 @@
       const data = await res.json();
       hideTyping();
       session = data.session || {};
+
+      // Check if we need to redirect (for receipt page after booking)
+      if (data.redirect) {
+        addMsg("🎉 Appointment booked successfully! Redirecting to receipt...", 'bot');
+        setTimeout(() => {
+          window.location.href = data.redirect;
+        }, 1500); // Show message for 1.5 seconds then redirect
+        return;
+      }
+
       addMsg(data.reply, 'bot');
     } catch {
       hideTyping();

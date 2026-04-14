@@ -15,7 +15,7 @@
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests
@@ -855,15 +855,15 @@ def chat():
                     f"*{appt['date']}* at *{appt['time']}*.\n"
                     "Our team will contact you shortly.\n\n"
                     f"Consultation fee: {cfg('clinic_fees')}\n"
-                    "Please arrive 10 minutes before your appointment.\n\n"
-                    f"📄 [View Receipt]({get_base_url()}/receipt?"
-                    f"name={appt['name']}&phone={appt['phone']}&"
-                    f"date={appt['date']}&time={appt['time']}&"
-                    f"problem={appt['problem']}&id={appt['id']})"
+                    "Please arrive 10 minutes before your appointment."
                 )
 
                 session.update({"step": "idle", "data": {}})
-                return jsonify(reply=confirmation, session=session)
+                return jsonify(
+                    reply=confirmation,
+                    redirect=f"/receipt?name={appt['name']}&phone={appt['phone']}&date={appt['date']}&time={appt['time']}&problem={appt['problem']}&id={appt['id']}",
+                    session=session
+                )
 
             except Exception as exc:
                 print(f"[chat/booking-flow] Unhandled error: {exc}")
