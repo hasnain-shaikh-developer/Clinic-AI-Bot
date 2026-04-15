@@ -825,25 +825,35 @@ def chat():
                 # Save to SQLite — single insert, no duplicates possible
                 saved = save_appointment(appt)
 
+                if not saved:
+                    print(f"[chat/booking-flow] Failed to save appointment: {appt}")
+                    session.update({"step": "idle", "data": {}})
+                    return jsonify(
+                        reply=(
+                            "Sorry, your appointment could not be saved to the database. "
+                            "Please try again or contact the clinic directly."
+                        ),
+                        session=session
+                    )
+
                 # Send Telegram notification using the appointment data we have
                 # Don't query DB — use the appt object directly (avoids conflicts with other instances)
-                if saved:
-                    try:
-                        cid        = appt.get("clinic_id") or "clinic1"
-                        clinic_row = CLINICS.get(cid)
+                try:
+                    cid        = appt.get("clinic_id") or "clinic1"
+                    clinic_row = CLINICS.get(cid)
 
-                        if clinic_row:
-                            dashboard_url = f"{get_base_url()}{clinic_row['dashboard']}"
-                            send_telegram_notification(
-                                clinic_row["telegram_bot_token"],
-                                clinic_row["telegram_chat_id"],
-                                f"New Appointment: {appt['name']}\nCheck Dashboard:\n{dashboard_url}"
-                            )
-                        else:
-                            print(f"[Telegram] Clinic config not found: {cid!r}")
+                    if clinic_row:
+                        dashboard_url = f"{get_base_url()}{clinic_row['dashboard']}"
+                        send_telegram_notification(
+                            clinic_row["telegram_bot_token"],
+                            clinic_row["telegram_chat_id"],
+                            f"New Appointment: {appt['name']}\nCheck Dashboard:\n{dashboard_url}"
+                        )
+                    else:
+                        print(f"[Telegram] Clinic config not found: {cid!r}")
 
-                    except Exception as tg_exc:
-                        print("[Telegram] Error:", tg_exc)
+                except Exception as tg_exc:
+                    print("[Telegram] Error:", tg_exc)
 
                 confirmation = (
                     "Appointment Received\n\n"
