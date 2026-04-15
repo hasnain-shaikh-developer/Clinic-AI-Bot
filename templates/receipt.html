@@ -40,6 +40,14 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      margin: 0;
+    }
+
+    .page-wrapper {
+      width: 100%;
+      max-width: 650px;
+      display: flex;
+      justify-content: center;
     }
 
     .receipt-container {
@@ -117,16 +125,17 @@
     }
 
     .clinic-info {
-      background: var(--primary-light);
+      background: #e8f0ff;
       border-radius: 12px;
       padding: 20px;
       margin-bottom: 24px;
+      border-left: 4px solid #2563eb;
     }
 
     .clinic-info h3 {
       font-size: 16px;
       font-weight: 700;
-      color: var(--primary);
+      color: #2563eb;
       margin-bottom: 12px;
     }
 
@@ -136,11 +145,11 @@
       gap: 10px;
       margin-bottom: 8px;
       font-size: 14px;
-      color: var(--text);
+      color: #18243a;
     }
 
     .clinic-detail i {
-      color: var(--primary);
+      color: #2563eb;
       width: 16px;
     }
 
@@ -252,11 +261,12 @@
   </style>
 </head>
 <body>
-  <div class="receipt-container">
-    <header class="receipt-header">
-      <h1>{{ clinic.clinic_name }}</h1>
-      <p>{{ clinic.clinic_tagline }}</p>
-    </header>
+  <div class="page-wrapper">
+    <div class="receipt-container">
+      <header class="receipt-header">
+        <h1>{{ clinic.clinic_name }}</h1>
+        <p>{{ clinic.clinic_tagline }}</p>
+      </header>
 
     <div class="receipt-body">
       {% if error %}
@@ -329,6 +339,7 @@
       {% endif %}
     </div>
   </div>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
   <script>
@@ -352,11 +363,12 @@
       }
 
       const opt = {
-        margin: 10,
+        margin: [20, 20, 20, 20],
         filename: `appointment-receipt-{{ appointment.id }}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+        html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: 'avoid' }
       };
 
       html2pdf().set(opt).from(receipt).save().catch(() => {
