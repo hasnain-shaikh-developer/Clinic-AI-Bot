@@ -95,7 +95,7 @@ app = Flask(__name__)
 # Absolute path prevents appointments disappearing when the working
 # directory changes (common on Render, Railway, and similar hosts).
 # To reset: delete appointments.db — it is recreated on startup.
-DB_PATH = os.path.join(os.getcwd(), "appointments.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "appointments.db")
 
 
 def cfg(key):
@@ -196,6 +196,7 @@ def save_appointment(appt):
                 }
             )
             conn.commit()
+            print(f"[DB] Saved appointment: {appt['name']} on {appt['date']} at {appt['time']}")
             return True
         finally:
             conn.close()
@@ -1012,6 +1013,34 @@ def receipt():
                              appointment=None,
                              clinic=CLINIC_CONFIG,
                              error="Something went wrong loading the receipt.")
+
+
+@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete/<appt_id>", methods=["POST"])
+def delete_appointment(appt_id):
+    """Delete a single appointment by ID."""
+    try:
+        conn = get_db()
+        conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('admin'))
+    except Exception as exc:
+        print(f"[delete] Error: {exc}")
+        return redirect(url_for('admin'))
+
+
+@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete_all", methods=["POST"])
+def delete_all_appointments():
+    """Delete all appointments."""
+    try:
+        conn = get_db()
+        conn.execute("DELETE FROM appointments")
+        conn.commit()
+        conn.close()
+        return redirect(url_for('admin'))
+    except Exception as exc:
+        print(f"[delete_all] Error: {exc}")
+        return redirect(url_for('admin'))
 
 
 # ══════════════════════════════════════════════════════════════════
