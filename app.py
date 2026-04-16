@@ -196,7 +196,6 @@ def save_appointment(appt):
                 }
             )
             conn.commit()
-            print(f"[DB] Saved appointment: {appt['name']} on {appt['date']} at {appt['time']}")
             return True
         finally:
             conn.close()
@@ -830,14 +829,14 @@ def chat():
                     session.update({"step": "idle", "data": {}})
                     return jsonify(
                         reply=(
-                            "Sorry, your appointment could not be saved to the database. "
+                            "Sorry, your appointment could not be saved. "
                             "Please try again or contact the clinic directly."
                         ),
                         session=session
                     )
 
-                # Send Telegram notification using the appointment data we have
-                # Don't query DB — use the appt object directly (avoids conflicts with other instances)
+                # Send Telegram notification using the appt object directly
+                # (avoids a DB re-fetch race on multi-instance deployments)
                 try:
                     cid        = appt.get("clinic_id") or "clinic1"
                     clinic_row = CLINICS.get(cid)
@@ -870,10 +869,13 @@ def chat():
                 )
 
                 session.update({"step": "idle", "data": {}})
+                # success_url handled by frontend JS; redirect key also included
+                # for any client that reads it directly
                 return jsonify(
-                    reply=confirmation,
-                    redirect=f"/receipt?name={appt['name']}&phone={appt['phone']}&date={appt['date']}&time={appt['time']}&problem={appt['problem']}&id={appt['id']}",
-                    session=session
+                    reply       = confirmation,
+                    session     = session,
+                    success_url = f"/success/{appt['id']}",
+                    redirect    = f"/receipt?name={appt['name']}&phone={appt['phone']}&date={appt['date']}&time={appt['time']}&problem={appt['problem']}&id={appt['id']}"
                 )
 
             except Exception as exc:
@@ -992,65 +994,79 @@ def ping():
     return "ok", 200
 
 
-@app.route("/receipt")
-def receipt():
-    """Appointment receipt page with download option."""
+@app.route("/success/<appt_id>")
+def success(appt_id):
+    """
+    Receipt page shown after a successful booking.
+    Fetches the appointment from SQLite by id and renders the receipt.
+    """
     try:
-        # Get appointment data from URL parameters
-        appt_data = {
-            "name":     request.args.get("name", ""),
-            "phone":    request.args.get("phone", ""),
-            "date":     request.args.get("date", ""),
-            "time":     request.args.get("time", ""),
-            "problem":  request.args.get("problem", ""),
-            "id":       request.args.get("id", ""),
-        }
+        conn = get_db()
+        row  = conn.execute(
+            "SELECT * FROM appointments WHERE id = ?", (appt_id,)
+        ).fetchone()
+        conn.close()
 
-        # If no data in URL, show error
-        if not any(appt_data.values()):
-            return render_template("receipt.html",
-                                 appointment=None,
-                                 clinic=CLINIC_CONFIG,
-                                 error="No appointment data found.")
+        if not row:
+            return redirect("/")
 
-        return render_template("receipt.html",
-                             appointment=appt_data,
-                             clinic=CLINIC_CONFIG)
+        appt = dict(row)
+        return render_template("success.html", appt=appt, clinic=CLINIC_CONFIG)
 
     except Exception as exc:
+        print(f"[success] Error: {exc}")
+        return redirect("/")
+
+
+@app.route("/receipt")
+def receipt():
+    """Appointment receipt page — reads data from URL query params."""
+    try:
+        appt_data = {
+            "name":    request.args.get("name",    ""),
+            "phone":   request.args.get("phone",   ""),
+            "date":    request.args.get("date",    ""),
+            "time":    request.args.get("time",    ""),
+            "problem": request.args.get("problem", ""),
+            "id":      request.args.get("id",      ""),
+        }
+        if not any(appt_data.values()):
+            return render_template("success.html", appt=None, clinic=CLINIC_CONFIG,
+                                   error="No appointment data found.")
+        return render_template("success.html", appt=appt_data, clinic=CLINIC_CONFIG)
+    except Exception as exc:
         print(f"[receipt] Error: {exc}")
-        return render_template("receipt.html",
-                             appointment=None,
-                             clinic=CLINIC_CONFIG,
-                             error="Something went wrong loading the receipt.")
+        return redirect("/")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete/<appt_id>", methods=["POST"])
+@app.route("/delete/<appt_id>", methods=["POST"])
 def delete_appointment(appt_id):
-    """Delete a single appointment by ID."""
+    """
+    Delete a single appointment by ID.
+    Works for all dashboards — redirects back to the referring page.
+    """
     try:
         conn = get_db()
         conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
         conn.commit()
         conn.close()
-        return redirect(url_for('admin'))
     except Exception as exc:
         print(f"[delete] Error: {exc}")
-        return redirect(url_for('admin'))
+    return redirect(request.referrer or "/")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete_all", methods=["POST"])
-def delete_all_appointments():
-    """Delete all appointments."""
+@app.route(f"/{CLINIC_CONFIG['admin_path']}/clear", methods=["POST"])
+def admin_clear():
+    """Delete ALL appointments (testing only — share URL with clinic owner only)."""
     try:
         conn = get_db()
         conn.execute("DELETE FROM appointments")
         conn.commit()
         conn.close()
-        return redirect(url_for('admin'))
+        return jsonify({"status": "cleared"}), 200
     except Exception as exc:
-        print(f"[delete_all] Error: {exc}")
-        return redirect(url_for('admin'))
+        print(f"[admin_clear] Error: {exc}")
+        return jsonify({"status": "error", "detail": str(exc)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════
