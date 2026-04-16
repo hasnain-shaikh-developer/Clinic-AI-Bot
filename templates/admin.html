@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — {{ clinic.clinic_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+  <style>
+    :root {
+      --primary:       {{ clinic.primary_color }};
+      --primary-dark:  color-mix(in srgb, {{ clinic.primary_color }} 80%, #000);
+      --primary-light: color-mix(in srgb, {{ clinic.primary_color }} 12%, #fff);
+      --primary-mid:   color-mix(in srgb, {{ clinic.primary_color }} 25%, #fff);
+
+      --surface: #f3f6fb;
+      --white:   #ffffff;
+      --border:  #e0e8f4;
+      --text:    #18243a;
+      --text-2:  #4a5872;
+      --muted:   #8898b0;
+
+      --success:    #059669;
+      --success-bg: #ecfdf5;
+      --warn:       #d97706;
+      --warn-bg:    #fffbeb;
+
+      --font: 'DM Sans', system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--surface);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;           /* prevent any stray element causing horizontal scroll */
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Top nav ─────────────────────────────────────────────────── */
+    .topnav {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--primary);
+      background-image: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+      height: 60px;
+      display: flex; align-items: center;
+      padding: 0 28px; gap: 14px;
+      box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+    .nav-logo {
+      width: 36px; height: 36px;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .nav-logo i { color: #fff; font-size: 16px; }
+    .nav-title { min-width: 0; flex: 1; }   /* allows text-overflow: ellipsis to work */
+    .nav-title h1 { color: #fff; font-size: 16px; font-weight: 700;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-title p  { color: rgba(255,255,255,.6); font-size: 11px; }
+    .nav-back {
+      margin-left: auto;
+      color: rgba(255,255,255,.8);
+      text-decoration: none; font-size: 12.5px; font-weight: 500;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 8px;
+      padding: 6px 13px;
+      display: flex; align-items: center; gap: 7px;
+      transition: background .18s;
+    }
+    .nav-back:hover { background: rgba(255,255,255,.22); color: #fff; }
+
+    /* ── Content ─────────────────────────────────────────────────── */
+    .content {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    /* ── Clinic info strip ───────────────────────────────────────── */
+    .clinic-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex; flex-wrap: wrap; gap: 18px 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .ci-item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+    .ci-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--primary-light);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .ci-icon i { color: var(--primary); font-size: 13px; }
+    .ci-lbl { font-size: 11px; color: var(--muted); }
+    .ci-val { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 1px; }
+
+    /* ── Stats grid ──────────────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .stat {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 18px;
+      display: flex; align-items: center; gap: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .stat-ico {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .stat-ico.blue  { background: var(--primary-light); }
+    .stat-ico.green { background: var(--success-bg); }
+    .stat-ico.warn  { background: var(--warn-bg); }
+    .stat-ico.blue  i { color: var(--primary); }
+    .stat-ico.green i { color: var(--success); }
+    .stat-ico.warn  i { color: var(--warn); }
+    .stat-ico i { font-size: 19px; }
+    .stat-num { font-size: 28px; font-weight: 700; line-height: 1; }
+    .stat-lbl { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Slot usage bars ─────────────────────────────────────────── */
+    .slot-section { margin-bottom: 24px; }
+    .section-label {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 12px;
+    }
+    .section-label i { color: var(--primary); }
+    .slot-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .slot-chip {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px; min-width: 140px;
+    }
+    .slot-chip .sc-date { font-weight: 600; color: var(--text); font-size: 13px; }
+    .slot-chip .sc-bar {
+      height: 5px; border-radius: 3px;
+      background: var(--surface);
+      margin: 6px 0 4px; overflow: hidden;
+    }
+    .slot-chip .sc-fill {
+      height: 100%; border-radius: 3px;
+      background: var(--primary);
+    }
+    .slot-chip .sc-fill.full { background: var(--warn); }
+    .slot-chip .sc-count { color: var(--muted); }
+    .slot-chip .sc-count span { color: var(--text); font-weight: 600; }
+
+    /* ── Filter bar ──────────────────────────────────────────────── */
+    .filter-bar {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .filter-label {
+      font-size: 12.5px; font-weight: 600; color: var(--text-2);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .filter-label i { color: var(--primary); }
+
+    .filter-pills {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .fp {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 500; font-family: var(--font);
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      color: var(--text-2);
+      text-decoration: none;
+      transition: all .16s;
+      white-space: nowrap;
+    }
+    .fp:hover  { border-color: var(--primary); color: var(--primary); }
+    .fp.active {
+      background: var(--primary); border-color: var(--primary);
+      color: #fff; font-weight: 600;
+    }
+
+    .filter-result {
+      margin-left: auto;
+      font-size: 12px; color: var(--muted);
+      white-space: nowrap;
+    }
+    .filter-result b { color: var(--text); }
+
+    /* ── Table section ───────────────────────────────────────────── */
+    .table-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .tbl-title {
+      font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .tbl-title i { color: var(--primary); }
+    .count-pill {
+      background: var(--primary-light); color: var(--primary);
+      font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 20px;
+    }
+    .search-wrap {
+      margin-left: auto; position: relative;
+    }
+    .search-wrap i {
+      position: absolute; left: 10px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted); font-size: 12px;
+      pointer-events: none;
+    }
+    #search {
+      border: 1.5px solid var(--border);
+      border-radius: 9px;
+      padding: 8px 12px 8px 30px;
+      font-size: 12.5px; font-family: var(--font);
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      width: clamp(160px, 30vw, 260px);  /* fluid: never overflows, never too tiny */
+      transition: border-color .18s;
+    }
+    #search:focus { border-color: var(--primary); }
+
+    /* ── Table card ──────────────────────────────────────────────── */
+    .tbl-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .tbl-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch; /* smooth momentum scroll on iOS */
+    }
+
+    table { width: 100%; border-collapse: collapse; min-width: 580px; }
+    thead { background: var(--primary); }
+    thead th {
+      padding: 12px 14px;
+      text-align: left;
+      font-size: 10.5px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: rgba(255,255,255,.8);
+      white-space: nowrap;
+    }
+    thead th:first-child { width: 44px; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--surface);
+      transition: background .14s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--primary-light); }
+
+    td {
+      padding: 13px 14px;
+      font-size: 13px; color: var(--text);
+      vertical-align: top;
+    }
+    td.num  { color: var(--muted); font-size: 11.5px; }
+    td.bold { font-weight: 600; }
+    td.mono { font-family: monospace; font-size: 12.5px; }
+    td.dim  { color: var(--text-2); font-size: 12.5px; max-width: 180px; }
+    td.ts   { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+
+    .date-tag {
+      display: inline-block;
+      background: var(--primary-light); color: var(--primary);
+      font-size: 12px; font-weight: 600;
+      padding: 3px 9px; border-radius: 6px;
+    }
+    .time-tag {
+      display: inline-block;
+      background: var(--success-bg); color: var(--success);
+      font-size: 11.5px; font-weight: 600;
+      padding: 2px 8px; border-radius: 5px;
+      margin-top: 4px;
+    }
+
+    .pill-ok {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--success-bg); color: var(--success);
+      font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 20px;
+    }
+    .pill-ok i { font-size: 9px; }
+
+    .time-tag i { font-size: 10px; }
+
+    /* ── Delete buttons ─────────────────────────────────────────── */
+    .delete-btn, .delete-all-btn {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background .18s;
+    }
+    .delete-btn:hover, .delete-all-btn:hover {
+      background: #c82333;
+    }
+    .delete-all-btn {
+      margin-left: 10px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    /* ── Empty state ─────────────────────────────────────────────── */
+    .empty {
+      text-align: center; padding: 56px 20px;
+    }
+    .empty-ico {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: var(--primary-light);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .empty-ico i { color: var(--primary); font-size: 26px; }
+    .empty h3 { font-size: 16px; margin-bottom: 6px; }
+    .empty p  { font-size: 13px; color: var(--muted); }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+
+    /* Tablet (681 – 900 px) — tighten padding, search goes full width */
+    @media (max-width: 900px) and (min-width: 681px) {
+      .content   { padding: 20px 16px 48px; }
+      .topnav    { padding: 0 18px; }
+      #search    { width: 100%; }
+      .search-wrap { margin-left: 0; width: 100%; }
+      .table-header { flex-direction: column; align-items: flex-start; }
+    }
+
+    @media (max-width: 680px) {
+      .topnav        { padding: 0 14px; }
+      .content       { padding: 16px 12px 40px; }
+      #search        { width: 100%; }
+      .search-wrap   { margin-left: 0; width: 100%; }
+      .table-header  { flex-direction: column; align-items: flex-start; }
+      .clinic-card   { padding: 14px; }
+      .filter-result { margin-left: 0; }
+      /* filter pills wrap on narrow screens */
+      .filter-pills  { gap: 5px; }
+      .fp            { font-size: 11.5px; padding: 5px 11px; }
+      /* truncate long clinic name in nav */
+      .nav-title h1  { font-size: 14px; max-width: 140px; }
+      /* reduce stat box width on mobile */
+      .stats         { grid-template-columns: 1fr; }
+      .stat          { flex-direction: column; text-align: center; }
+    }
+    @media (max-width: 420px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 340px) {
+      /* very small phones — stack stats vertically */
+      .stats         { grid-template-columns: 1fr; }
+      .filter-pills  { flex-direction: column; }
+      .fp            { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top nav ───────────────────────────────────────────────────── -->
+<nav class="topnav">
+  <div class="nav-logo"><i class="fa-solid fa-stethoscope"></i></div>
+  <div class="nav-title">
+    <h1>{{ clinic.clinic_name }}</h1>
+    <p>Appointment Management</p>
+  </div>
+  <a href="/" class="nav-back">
+    <i class="fa-solid fa-comment-dots"></i> Chat
+  </a>
+</nav>
+
+<!-- ── Content ──────────────────────────────────────────────────── -->
+<div class="content">
+
+  <!-- Clinic info strip -->
+  <div class="clinic-card">
+    <div class="ci-item">
+      <div class="ci-icon"><i class="fa-solid fa-location-dot"></i></div>
+      <div>
+        <div class="ci-lbl">Location</div>
+        <div class="ci-val">{{ clinic.clinic_location }}</div>
+      </div>
+    </div>
+    <div class="ci-item">
+      <div class="ci-icon"><i class="fa-regular fa-clock"></i></div>
+      <div>
+        <div class="ci-lbl">Hours</div>
+        <div class="ci-val">{{ clinic.clinic_days }}, {{ clinic.clinic_timings }}</div>
+      </div>
+    </div>
+    <div class="ci-item">
+      <div class="ci-icon"><i class="fa-solid fa-dollar-sign"></i></div>
+      <div>
+        <div class="ci-lbl">Consultation Fee</div>
+        <div class="ci-val">{{ clinic.clinic_fees }}</div>
+      </div>
+    </div>
+    <div class="ci-item">
+      <div class="ci-icon"><i class="fa-solid fa-calendar-check"></i></div>
+      <div>
+        <div class="ci-lbl">Daily Slot Limit</div>
+        <div class="ci-val">{{ clinic.daily_slot_limit }} per day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats — always reflect ALL appointments, not filtered -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-ico blue"><i class="fa-regular fa-calendar-check"></i></div>
+      <div>
+        <div class="stat-num">{{ all_count }}</div>
+        <div class="stat-lbl">Total Appointments</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-ico green"><i class="fa-solid fa-circle-check"></i></div>
+      <div>
+        <div class="stat-num">{{ today_count }}</div>
+        <div class="stat-lbl">Today's Appointments</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-ico warn"><i class="fa-solid fa-calendar-days"></i></div>
+      <div>
+        <div class="stat-num">{{ slot_summary | length }}</div>
+        <div class="stat-lbl">Active Days</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slot usage bars (always all dates) -->
+  {% if slot_summary %}
+  <div class="slot-section">
+    <div class="section-label">
+      <i class="fa-solid fa-chart-bar"></i> Slot Usage by Date
+    </div>
+    <div class="slot-grid">
+      {% for day, used in slot_summary.items() %}
+      {% set pct = [((used / clinic.daily_slot_limit) * 100) | int, 100] | min %}
+      {% set full = used >= clinic.daily_slot_limit %}
+      <div class="slot-chip">
+        <div class="sc-date">{{ day }}</div>
+        <div class="sc-bar">
+          <div class="sc-fill{% if full %} full{% endif %}" style="width: {{ pct }}%"></div>
+        </div>
+        <div class="sc-count">
+          <span>{{ used }}</span> / {{ clinic.daily_slot_limit }} slots
+          {% if full %} — <b style="color:var(--warn)">Full</b>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Date filter bar ────────────────────────────────────────── -->
+  <!--
+    Clicking a pill reloads the page with ?filter=X.
+    All filtering happens in Python (filter_appointments in app.py).
+    The active_filter variable from Flask highlights the current selection.
+  -->
+  {% set base_url = '/' + clinic.admin_path %}
+  <div class="filter-bar">
+    <span class="filter-label">
+      <i class="fa-solid fa-filter"></i> Filter by Date
+    </span>
+    <div class="filter-pills">
+      <a href="{{ base_url }}?filter=all"       class="fp {% if active_filter == 'all'       %}active{% endif %}">All</a>
+      <a href="{{ base_url }}?filter=today"     class="fp {% if active_filter == 'today'     %}active{% endif %}">Today</a>
+      <a href="{{ base_url }}?filter=yesterday" class="fp {% if active_filter == 'yesterday' %}active{% endif %}">Yesterday</a>
+      <a href="{{ base_url }}?filter=last7"     class="fp {% if active_filter == 'last7'     %}active{% endif %}">Last 7 Days</a>
+      <a href="{{ base_url }}?filter=lastmonth" class="fp {% if active_filter == 'lastmonth' %}active{% endif %}">Last Month</a>
+      <a href="{{ base_url }}?filter=lastyear"  class="fp {% if active_filter == 'lastyear'  %}active{% endif %}">Last Year</a>
+    </div>
+    <span class="filter-result">
+      Showing <b>{{ appointments | length }}</b>
+      {% if active_filter != 'all' %}of {{ all_count }}{% endif %}
+      record{% if appointments | length != 1 %}s{% endif %}
+    </span>
+  </div>
+
+  <!-- ── Appointments table ─────────────────────────────────────── -->
+  <div class="table-header">
+    <div class="tbl-title">
+      <i class="fa-regular fa-calendar-days"></i>
+      {% if active_filter == 'all' %}All Appointments
+      {% elif active_filter == 'today' %}Today's Appointments
+      {% elif active_filter == 'yesterday' %}Yesterday's Appointments
+      {% elif active_filter == 'last7' %}Last 7 Days
+      {% elif active_filter == 'lastmonth' %}Last Month
+      {% elif active_filter == 'lastyear' %}Last Year
+      {% endif %}
+      <span class="count-pill">{{ appointments | length }}</span>
+    </div>
+    <div class="search-wrap">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input id="search" placeholder="Search name, date, phone…" oninput="filterTable(this.value)">
+    </div>
+    <form method="post" action="{{ base_url }}/delete_all" style="display:inline;">
+      <button type="submit" class="delete-all-btn" onclick="return confirm('Are you sure you want to delete ALL appointments?')">Delete All</button>
+    </form>
+  </div>
+
+  <div class="tbl-card">
+    {% if appointments %}
+    <div class="tbl-scroll">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Patient</th>
+            <th>Phone</th>
+            <th>Date &amp; Time</th>
+            <th>Reason / Problem</th>
+            <th>Booked At</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in appointments | reverse %}
+          <tr>
+            <td class="num">{{ loop.index }}</td>
+            <td class="bold">{{ a.name }}</td>
+            <td class="mono">{{ a.phone }}</td>
+            <td>
+              <span class="date-tag">{{ a.date }}</span><br>
+              <span class="time-tag">
+                <i class="fa-regular fa-clock"></i>
+                {{ a.time }}
+              </span>
+            </td>
+            <td class="dim">{{ a.problem }}</td>
+            <td class="ts">
+              {% if a.booked_at %}
+                {{ a.booked_at[:10] }}<br>
+                <span>{{ a.booked_at[11:16] }} UTC</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <span class="pill-ok">
+                <i class="fa-solid fa-circle-check"></i> Confirmed
+              </span>
+            </td>
+            <td>
+              <form method="post" action="{{ base_url }}/delete/{{ a.id }}" style="display:inline;">
+                <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete this appointment?')">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% else %}
+    <div class="empty">
+      <div class="empty-ico"><i class="fa-regular fa-calendar-xmark"></i></div>
+      <h3>No appointments found</h3>
+      <p>
+        {% if active_filter == 'all' %}
+          No appointments have been booked yet.
+        {% else %}
+          No appointments match the selected filter.
+          <a href="{{ base_url }}?filter=all" style="color:var(--primary)">View all</a>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+</div><!-- .content -->
+
+<script>
+  // Client-side search (within the already-filtered set)
+  function filterTable(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('#tbl tbody tr').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+</script>
+</body>
+</html>
