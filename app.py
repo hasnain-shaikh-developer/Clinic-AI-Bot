@@ -1044,18 +1044,20 @@ def receipt():
                              error="Something went wrong loading the receipt.")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete/<appt_id>", methods=["POST"])
-def delete_appointment(appt_id):
-    """Delete a single appointment by ID."""
+@app.route("/delete/<id>")
+def delete_appointment_route(id):
     try:
         conn = get_db()
-        conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
-        conn.commit()
-        conn.close()
-        return redirect(url_for('admin'))
-    except Exception as exc:
-        print(f"[delete] Error: {exc}")
-        return redirect(url_for('admin'))
+        try:
+            conn.execute("DELETE FROM appointments WHERE id = ?", (id,))
+            conn.commit()
+            print(f"[DB] Deleted appointment {id}")
+        finally:
+            conn.close()
+    except Exception as e:
+        print("Delete error:", e)
+
+    return redirect("/admin")   # dashboard page
 
 
 @app.route(f"/{CLINIC_CONFIG['admin_path']}/delete_all", methods=["POST"])
