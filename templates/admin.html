@@ -530,7 +530,7 @@
       <i class="fa-solid fa-magnifying-glass"></i>
       <input id="search" placeholder="Search name, date, phone…" oninput="filterTable(this.value)">
     </div>
-    
+    <form method="post" action="/{{ config.admin_path }}/delete_all">
       <button type="submit" class="delete-all-btn" onclick="return confirm('Are you sure you want to delete ALL appointments?')">Delete All</button>
     </form>
   </div>
