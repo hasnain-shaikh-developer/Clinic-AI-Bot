@@ -177,9 +177,25 @@ def load_appointments(clinic_id=None):
 def save_appointment(appt):
     """
     Insert a single appointment dict into SQLite.
-    Opens connection → inserts → commits → closes.
-    Returns True on success, False on any error (never raises).
     """
+
+    # ✅ FUTURE TIME VALIDATION (IMPORTANT FIX)
+    try:
+        from datetime import datetime
+
+        slot_dt = datetime.strptime(
+            f"{appt['date']} {appt['time']}",
+            "%d %B %Y %I:%M %p"
+        )
+
+        if slot_dt <= datetime.now():
+            print("[ERROR] Past time selected — rejecting")
+            return False
+
+    except Exception as e:
+        print("Time parse error:", e)
+        return False
+
     try:
         conn = get_db()
         try:
@@ -203,14 +219,14 @@ def save_appointment(appt):
             return True
         finally:
             conn.close()
+
     except sqlite3.IntegrityError:
-        # Duplicate id — already saved (idempotent, not an error)
         print(f"[DB] Appointment {appt.get('id')} already exists — skipping duplicate.")
         return True
+
     except Exception as exc:
         print(f"[DB] save_appointment error: {exc}")
         return False
-
 
 # ══════════════════════════════════════════════════════════════════
 #  TIME SLOT ENGINE
