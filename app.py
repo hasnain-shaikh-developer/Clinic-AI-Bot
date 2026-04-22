@@ -174,26 +174,34 @@ def load_appointments(clinic_id=None):
         return []
 
 
+from datetime import datetime, timedelta
+
+# ✅ VALIDATION FUNCTION
+def is_valid_slot(date_str, time_str):
+    """Ensure slot is not in the past (Pakistan time)."""
+    try:
+        now = datetime.utcnow() + timedelta(hours=5)
+
+        slot_dt = datetime.strptime(
+            f"{date_str} {time_str}",
+            "%d %B %Y %I:%M %p"
+        )
+
+        return slot_dt > now
+    except Exception as e:
+        print("Validation error:", e)
+        return False
+
+
+# ✅ UPDATED SAVE FUNCTION
 def save_appointment(appt):
     """
     Insert a single appointment dict into SQLite.
     """
 
-    # ✅ FUTURE TIME VALIDATION (IMPORTANT FIX)
-    try:
-        from datetime import datetime
-
-        slot_dt = datetime.strptime(
-            f"{appt['date']} {appt['time']}",
-            "%d %B %Y %I:%M %p"
-        )
-
-        if slot_dt <= datetime.now():
-            print("[ERROR] Past time selected — rejecting")
-            return False
-
-    except Exception as e:
-        print("Time parse error:", e)
+    # 🚫 BLOCK PAST TIME
+    if not is_valid_slot(appt["date"], appt["time"]):
+        print("[ERROR] Past time selected — rejected")
         return False
 
     try:
