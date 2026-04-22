@@ -177,17 +177,37 @@ def load_appointments(clinic_id=None):
 from datetime import datetime, timedelta
 
 # ✅ VALIDATION FUNCTION
+
 def is_valid_slot(date_str, time_str):
-    """Ensure slot is not in the past (Pakistan time)."""
+    """Robust validation for ANY date format (Pakistan time)."""
+
     try:
         now = datetime.utcnow() + timedelta(hours=5)
 
-        slot_dt = datetime.strptime(
-            f"{date_str} {time_str}",
-            "%d %B %Y %I:%M %p"
-        )
+        # ✅ multiple formats try karo
+        for fmt in [
+            "%d %B %Y",     # 22 July 2026
+            "%Y-%m-%d",     # 2026-07-22
+            "%d-%m-%Y",     # 22-07-2026
+        ]:
+            try:
+                date_part = datetime.strptime(date_str, fmt).date()
+                break
+            except:
+                continue
+        else:
+            print("❌ Unknown date format:", date_str)
+            return False
+
+        # time parse
+        time_part = datetime.strptime(time_str, "%I:%M %p").time()
+
+        slot_dt = datetime.combine(date_part, time_part)
+
+        print("DEBUG SLOT:", slot_dt, "NOW:", now)
 
         return slot_dt > now
+
     except Exception as e:
         print("Validation error:", e)
         return False
