@@ -320,7 +320,7 @@ def next_free_slot(date_str, records=None):
     booked     = get_booked_times(date_str, records)
     today_fmt  = format_date(date.today())
     is_today   = (date_str.lower() == today_fmt.lower())
-    now        = datetime.now()
+    now = datetime.utcnow() + timedelta(hours=5)
 
     for slot in ALL_SLOTS:
         if slot in booked:
