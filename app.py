@@ -329,48 +329,50 @@ def count_booked(date_str, records=None):
 
 
 def next_free_slot(date_str, records=None):
-    """
-    Return the next available (unbooked AND in the future) time slot
-    for date_str.
-
-    Rules:
-      - A slot is "available" only if it is not already booked.
-      - For TODAY: also skip slots whose time has already passed.
-        e.g. if current time is 11:30 AM, slots at 9:00 AM and
-        10:00 AM are ignored — the next candidate is 12:00 PM or later.
-      - For FUTURE dates: time comparison is skipped (all unbooked
-        slots are valid).
-      - Returns None if no slots remain (caller should suggest next day).
-    """
     if records is None:
         records = load_appointments()
 
-    booked     = get_booked_times(date_str, records)
-    today_fmt  = format_date(date.today())
-    is_today   = (date_str.lower() == today_fmt.lower())
+    booked = get_booked_times(date_str, records)
+
+    # ✅ Pakistan time
     now = datetime.utcnow() + timedelta(hours=5)
 
+    today_str = f"{now.day}/{now.month}/{now.year}"
+
+    print("DATE_STR:", date_str)
+    print("TODAY:", today_str)
+
+    is_today = (date_str.strip() == today_str.strip())
+
+    # ✅ FIX: date_str ko actual date me convert karo
+    try:
+        day, month, year = map(int, date_str.split("/"))
+        selected_date = datetime(year, month, day).date()
+    except:
+        print("Date parse error")
+        return None
+
     for slot in ALL_SLOTS:
+
         if slot in booked:
-            continue                           # already taken
+            continue
 
-        if is_today:
-            # Parse the slot time and compare against current wall clock
-            try:
-                slot_t = datetime.strptime(slot, "%I:%M %p")
-                slot_dt = now.replace(
-                    hour=slot_t.hour, minute=slot_t.minute,
-                    second=0, microsecond=0
-                )
-                if slot_dt <= now:
-                    continue                   # this slot is in the past
-            except ValueError:
-                pass                           # unparseable — include it
+        try:
+            slot_time = datetime.strptime(slot, "%I:%M %p").time()
 
-        return slot                            # first future unbooked slot
+            # ✅ FIX: correct date use karo
+            slot_dt = datetime.combine(selected_date, slot_time)
 
-    return None                                # all slots gone
+            # ✅ sirf aaj ke liye past skip karo
+            if is_today and slot_dt <= now:
+                continue
 
+        except:
+            continue
+
+        return slot
+
+    return None
 
 def find_next_open_date(from_date, records=None):
     """
