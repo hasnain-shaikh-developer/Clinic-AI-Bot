@@ -1070,7 +1070,7 @@ def receipt():
                              error="Something went wrong loading the receipt.")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete/<appt_id>", methods=["POST"])
+@app.route("/admin-clinic1/delete/<appt_id>", methods=["POST"])
 def delete_appointment(appt_id):
     """Delete a single appointment by ID."""
     try:
@@ -1098,7 +1098,7 @@ def delete_appointment(appt_id):
 
 #     return redirect("/admin")   # dashboard page
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete_all", methods=["POST"])
+@app.route("/admin-clinic1/delete_all", methods=["POST"])
 def delete_all_appointments():
     """Delete all appointments."""
     try:
