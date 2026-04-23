@@ -187,8 +187,8 @@ def is_valid_slot(date_str, time_str):
         # ✅ multiple formats try karo
         for fmt in [
             "%d %B %Y",     # 22 July 2026
-            "%Y-%m-%d",     # 2026-07-22
-            "%d-%m-%Y",     # 22-07-2026
+            # "%Y-%m-%d",     # 2026-07-22
+            # "%d-%m-%Y",     # 22-07-2026
         ]:
             try:
                 date_part = datetime.strptime(date_str, fmt).date()
@@ -215,6 +215,7 @@ def is_valid_slot(date_str, time_str):
 
 # ✅ UPDATED SAVE FUNCTION
 def save_appointment(appt):
+    print("FINAL SAVING TIME:", appt["time"])
     """
     Insert a single appointment dict into SQLite.
     """
