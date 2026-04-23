@@ -530,9 +530,9 @@
       <i class="fa-solid fa-magnifying-glass"></i>
       <input id="search" placeholder="Search name, date, phone…" oninput="filterTable(this.value)">
     </div>
-    <form method="post" action="/{{ config.admin_path }}/delete_all">
-      <button type="submit" class="delete-all-btn" onclick="return confirm('Are you sure you want to delete ALL appointments?')">Delete All</button>
-    </form>
+    <form method="post" action="/admin-clinic1/delete_all">
+  <button type="submit">Delete All</button>
+</form>
   </div>
 
   <div class="tbl-card">
@@ -577,11 +577,9 @@
               </span>
             </td>
             <td>
-              <form method="post" action="/{{ config.admin_path }}/delete/{{ appt.id }}">
-      <button type="submit" onclick="return confirm('Delete this appointment?')">
-        Delete
-      </button>
-    </form>
+              <form method="post" action="/admin-clinic1/delete/{{ appt.id }}">
+  <button type="submit">Delete</button>
+</form>
             </td>
           </tr>
           {% endfor %}

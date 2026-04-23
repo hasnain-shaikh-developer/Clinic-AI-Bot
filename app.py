@@ -1072,45 +1072,20 @@ def receipt():
 
 @app.route("/admin-clinic1/delete/<appt_id>", methods=["POST"])
 def delete_appointment(appt_id):
-    """Delete a single appointment by ID."""
-    try:
-        conn = get_db()
-        conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
-        conn.commit()
-        conn.close()
-        return redirect(url_for('admin'))
-    except Exception as exc:
-        print(f"[delete] Error: {exc}")
-        return redirect(url_for('admin'))
+    conn = get_db()
+    conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('admin'))
 
-# @app.route("/delete/<id>")
-# def delete_appointment_route(id):
-#     try:
-#         conn = get_db()
-#         try:
-#             conn.execute("DELETE FROM appointments WHERE id = ?", (id,))
-#             conn.commit()
-#             print(f"[DB] Deleted appointment {id}")
-#         finally:
-#             conn.close()
-#     except Exception as e:
-#         print("Delete error:", e)
-
-#     return redirect("/admin")   # dashboard page
 
 @app.route("/admin-clinic1/delete_all", methods=["POST"])
 def delete_all_appointments():
-    """Delete all appointments."""
-    try:
-        conn = get_db()
-        conn.execute("DELETE FROM appointments")
-        conn.commit()
-        conn.close()
-        return redirect(url_for('admin'))
-    except Exception as exc:
-        print(f"[delete_all] Error: {exc}")
-        return redirect(url_for('admin'))
-
+    conn = get_db()
+    conn.execute("DELETE FROM appointments")
+    conn.commit()
+    conn.close()
+    return redirect(url_for('admin'))
 
 # ══════════════════════════════════════════════════════════════════
 #  PER-CLINIC ADMIN DASHBOARDS
