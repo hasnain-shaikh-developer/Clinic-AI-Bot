@@ -335,15 +335,13 @@ def next_free_slot(date_str, records=None):
 
     booked = get_booked_times(date_str, records)
 
-    # Pakistan time
     now = datetime.utcnow() + timedelta(hours=5)
 
-    today_str = f"{now.day}/{now.month}/{now.year}"
-    is_today = (date_str.strip() == today_str.strip())
+    parsed_date = parse_user_date(date_str)
+    if not parsed_date:
+        return None
 
-    # ✅ selected date parse
-    day, month, year = map(int, date_str.split("/"))
-    selected_date = datetime(year, month, day).date()
+    is_today = (parsed_date == now.date())
 
     valid_slots = []
 
@@ -353,9 +351,9 @@ def next_free_slot(date_str, records=None):
 
         try:
             slot_time = datetime.strptime(slot, "%I:%M %p").time()
-            slot_dt = datetime.combine(selected_date, slot_time)
+            slot_dt = datetime.combine(parsed_date, slot_time)
 
-            # ✅ IMPORTANT FIX: past slots remove
+            # 🚫 past slots block
             if is_today and slot_dt <= now:
                 continue
 
@@ -364,7 +362,6 @@ def next_free_slot(date_str, records=None):
         except:
             continue
 
-    # ✅ ab sirf valid slots me se pehla do
     if valid_slots:
         return valid_slots[0]
 
