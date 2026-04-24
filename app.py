@@ -1155,5 +1155,8 @@ for _cid, _clinic_data in CLINICS.items():
                      view_func=_make_clinic_admin(_cid))
 
 
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
+    print(app.url_map)
