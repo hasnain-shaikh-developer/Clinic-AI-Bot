@@ -997,6 +997,7 @@ def admin():
             all_count     = len(all_records),
             today_count   = today_count,
             clinic        = CLINIC_CONFIG,
+            clinic_id     = cid,
             slot_summary  = slot_summary,
             active_filter = period,
         )
