@@ -19,9 +19,9 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for
 import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
@@ -1067,22 +1067,28 @@ def receipt():
                              error="Something went wrong loading the receipt.")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete/<appt_id>", methods=["POST"])
-def delete_appointment(appt_id):
+@app.route("/admin-<clinic_id>/delete/<appt_id>", methods=["POST"])
+def delete_appointment(clinic_id, appt_id):
     conn = get_db()
-    conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
+    conn.execute(
+        "DELETE FROM appointments WHERE id = ? AND clinic_id = ?",
+        (appt_id, clinic_id)
+    )
     conn.commit()
     conn.close()
-    return redirect(url_for('admin'))
+    return redirect(f"/admin-{clinic_id}")
 
 
-@app.route(f"/{CLINIC_CONFIG['admin_path']}/delete_all", methods=["POST"])
-def delete_all_appointments():
+@app.route("/admin-<clinic_id>/delete_all", methods=["POST"])
+def delete_all_appointments(clinic_id):
     conn = get_db()
-    conn.execute("DELETE FROM appointments")
+    conn.execute(
+        "DELETE FROM appointments WHERE clinic_id = ?",
+        (clinic_id,)
+    )
     conn.commit()
     conn.close()
-    return redirect(url_for('admin'))
+    return redirect(f"/admin-{clinic_id}")
 
 # ══════════════════════════════════════════════════════════════════
 #  PER-CLINIC ADMIN DASHBOARDS
