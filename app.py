@@ -992,26 +992,28 @@ def admin():
         today_count = len(filter_appointments(all_records, "today"))
 
         return render_template(
-            "admin.html",
-            appointments  = filtered_records,
-            all_count     = len(all_records),
-            today_count   = today_count,
-            clinic        = CLINIC_CONFIG,
-            clinic_id     = cid,
-            slot_summary  = slot_summary,
-            active_filter = period,
-        )
+    "admin.html",
+    appointments  = filtered_records,
+    all_count     = len(all_records),
+    today_count   = today_count,
+    clinic        = CLINIC_CONFIG,
+    clinic_id     = "clinic1",   # ✅ FIX
+    slot_summary  = slot_summary,
+    active_filter = period,
+)
+    
     except Exception as exc:
         print(f"[admin] Error: {exc}")
         return render_template(
-            "admin.html",
-            appointments  = [],
-            all_count     = 0,
-            today_count   = 0,
-            clinic        = CLINIC_CONFIG,
-            slot_summary  = {},
-            active_filter = "all",
-        )
+    "admin.html",
+    appointments  = [],
+    all_count     = 0,
+    today_count   = 0,
+    clinic        = CLINIC_CONFIG,
+    clinic_id     = "clinic1",   # ✅ ADD THIS
+    slot_summary  = {},
+    active_filter = "all",
+)
 
 
 @app.route("/api/appointments")
