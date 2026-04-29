@@ -19,9 +19,9 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for
 import json, os, sqlite3
 from datetime import datetime, date, timedelta
 import requests   # pip install requests
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 
-# load_dotenv()
+load_dotenv()
 
 # ══════════════════════════════════════════════════════════════════
 #  CLINIC CONFIGURATION  ←  Edit this section only
